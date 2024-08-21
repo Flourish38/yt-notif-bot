@@ -193,10 +193,10 @@ async fn main() -> Result<(), sqlx::Error> {
     });
 
     // Start the client.
-    // match client.start().await {
-    //     Err(why) => println!("Client error: {}", why),
-    //     Ok(_) => println!("Client shutdown cleanly"),
-    // }
+    match client.start().await {
+        Err(why) => println!("Client error: {}", why),
+        Ok(_) => println!("Client shutdown cleanly"),
+    }
 
     Ok(())
 }
