@@ -9,6 +9,9 @@ mod generate_components;
 use commands::*;
 use components::*;
 
+use sqlx::migrate::MigrateDatabase;
+use sqlx::{query, Sqlite, SqlitePool};
+
 use std::env;
 
 use tokio::sync::{mpsc, OnceCell};
@@ -29,6 +32,10 @@ static ADMIN_USERS: OnceCell<Vec<UserId>> = OnceCell::const_new();
 // Unused by default, but useful in case you need it.
 // If you put `use crate::CONFIG;` in another file, it will include this, and you will have access to the raw config values for your own use.
 static CONFIG: OnceCell<Config> = OnceCell::const_new();
+
+const DB_URL: &str = "sqlite://sqlite.db";
+
+static DB: OnceCell<SqlitePool> = OnceCell::const_new();
 
 struct Handler;
 
@@ -70,7 +77,25 @@ fn build_config() -> Result<Config, ConfigError> {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), sqlx::Error> {
+    // based on https://tms-dev-blog.com/rust-sqlx-basics-with-sqlite/#Creating_an_SQLite_database, accessed 2024-08-20.
+    if !Sqlite::database_exists(DB_URL).await? {
+        Sqlite::create_database(DB_URL).await?;
+        let db = SqlitePool::connect(DB_URL).await?;
+        query(
+            "CREATE TABLE IF NOT EXISTS channels (
+                playlist_id TEXT,
+                channel_id INTEGER
+            ) STRICT",
+        )
+        .execute(&db)
+        .await?;
+        DB.set(db)
+    } else {
+        DB.set(SqlitePool::connect(DB_URL).await?)
+    }
+    .expect("Somehow a race condition for DB???");
+
     // Configure the client with your Discord bot token in your `config` file.
     let config = build_config().expect("Config failed");
 
@@ -135,4 +160,6 @@ async fn main() {
         Err(why) => println!("Client error: {}", why),
         Ok(_) => println!("Client shutdown cleanly"),
     }
+
+    Ok(())
 }
