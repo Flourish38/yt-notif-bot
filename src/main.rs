@@ -9,6 +9,12 @@ mod generate_components;
 use commands::*;
 use components::*;
 
+use google_youtube3::client::NoToken;
+use google_youtube3::{hyper, hyper_rustls, YouTube};
+
+use hyper::client::HttpConnector;
+use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
+
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{query, Sqlite, SqlitePool};
 
@@ -17,10 +23,10 @@ use std::env;
 use tokio::sync::{mpsc, OnceCell};
 
 use serenity::all::{Context, EventHandler, GatewayIntents};
+use serenity::async_trait;
 use serenity::model::application::{Command, Interaction};
 use serenity::model::gateway::Ready;
 use serenity::model::id::UserId;
-use serenity::{async_trait, Client};
 
 use config::{Config, ConfigError, File};
 
@@ -36,6 +42,10 @@ static CONFIG: OnceCell<Config> = OnceCell::const_new();
 const DB_URL: &str = "sqlite://sqlite.db";
 
 static DB: OnceCell<SqlitePool> = OnceCell::const_new();
+
+static KEY: OnceCell<Box<str>> = OnceCell::const_new();
+
+static YOUTUBE: OnceCell<YouTube<HttpsConnector<HttpConnector>>> = OnceCell::const_new();
 
 struct Handler;
 
@@ -73,6 +83,7 @@ fn build_config() -> Result<Config, ConfigError> {
         .add_source(File::with_name("config"))
         .set_default("admins", Vec::<u64>::new())?
         .set_override_option("token", env::var("DISCORD_TOKEN").ok())?
+        .set_override_option("key", env::var("YOUTUBE_KEY").ok())?
         .build()
 }
 
@@ -125,12 +136,37 @@ async fn main() -> Result<(), sqlx::Error> {
         .set(admins)
         .expect("Somehow a race condition for ADMIN_USERS???");
 
+    let key = config.get_string("key").expect("YouTube Data API key not found. Either:\n
+                                                                    - put it in the `config` file (key = \"key\")\n
+                                                                    - set environment variable YOUTUBE_KEY.\n");
+
+    KEY.set(key.into_boxed_str())
+        .expect("Somehow a race condition for KEY???");
+
+    let youtube = YouTube::new(
+        hyper::Client::builder().build(
+            HttpsConnectorBuilder::new()
+                .with_native_roots()
+                .unwrap()
+                .https_or_http()
+                .enable_http2()
+                .build(),
+        ),
+        NoToken,
+    );
+
+    // Have to do this instead of .expect(...) because YouTube doesn't implement Debug...
+    match YOUTUBE.set(youtube) {
+        Err(_) => panic!("Somehow a race condition for YOUTUBE???"),
+        _ => (),
+    }
+
     CONFIG
         .set(config)
         .expect("Somehow a race condition for CONFIG???");
 
     // Build our client.
-    let mut client = Client::builder(token, GatewayIntents::empty())
+    let mut client = serenity::Client::builder(token, GatewayIntents::empty())
         .event_handler(Handler)
         .await
         .expect("Error creating client");
@@ -157,10 +193,10 @@ async fn main() -> Result<(), sqlx::Error> {
     });
 
     // Start the client.
-    match client.start().await {
-        Err(why) => println!("Client error: {}", why),
-        Ok(_) => println!("Client shutdown cleanly"),
-    }
+    // match client.start().await {
+    //     Err(why) => println!("Client error: {}", why),
+    //     Ok(_) => println!("Client shutdown cleanly"),
+    // }
 
     Ok(())
 }
