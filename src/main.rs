@@ -84,8 +84,9 @@ async fn main() -> Result<(), sqlx::Error> {
         let db = SqlitePool::connect(DB_URL).await?;
         query(
             "CREATE TABLE IF NOT EXISTS channels (
-                playlist_id TEXT,
-                channel_id INTEGER
+                playlist_id TEXT NOT NULL,
+                channel_id INTEGER NOT NULL,
+                most_recent TEXT NOT NULL CHECK ( DATETIME (most_recent) IS most_recent )
             ) STRICT",
         )
         .execute(&db)
