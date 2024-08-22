@@ -1,8 +1,21 @@
 use crate::DB;
 
-use google_youtube3::chrono::{SecondsFormat, Utc};
+use google_youtube3::chrono::{DateTime, SecondsFormat, Utc};
 use serenity::all::ChannelId;
 use sqlx::{query, sqlite::SqliteQueryResult};
+
+fn into_sqlite(dt: DateTime<Utc>) -> String {
+    dt.to_rfc3339_opts(SecondsFormat::Secs, true)
+        // format to work with sqlite's DATETIME() function
+        .trim_end_matches('Z')
+        .replace('T', " ")
+}
+
+fn from_sqlite(str: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(&format!("{}Z", str))
+        .unwrap()
+        .into()
+}
 
 pub async fn add_channel(
     playlist: &String,
@@ -14,13 +27,7 @@ pub async fn add_channel(
     )
     .bind(playlist)
     .bind(channel.get() as i64)
-    .bind(
-        Utc::now()
-            .to_rfc3339_opts(SecondsFormat::Secs, true)
-            // format to work with sqlite's DATETIME() function
-            .replace('T', " ")
-            .trim_end_matches('Z'),
-    )
+    .bind(into_sqlite(Utc::now()))
     .execute(DB.get().unwrap())
     .await
 }
