@@ -5,6 +5,7 @@
 mod commands;
 mod components;
 mod generate_components;
+mod youtube;
 
 use commands::*;
 use components::*;
@@ -42,6 +43,8 @@ static CONFIG: OnceCell<Config> = OnceCell::const_new();
 const DB_URL: &str = "sqlite://sqlite.db";
 
 static DB: OnceCell<SqlitePool> = OnceCell::const_new();
+
+static HYPER: OnceCell<hyper::Client<HttpsConnector<HttpConnector>>> = OnceCell::const_new();
 
 static KEY: OnceCell<Box<str>> = OnceCell::const_new();
 
@@ -143,17 +146,20 @@ async fn main() -> Result<(), sqlx::Error> {
     KEY.set(key.into_boxed_str())
         .expect("Somehow a race condition for KEY???");
 
-    let youtube = YouTube::new(
-        hyper::Client::builder().build(
-            HttpsConnectorBuilder::new()
-                .with_native_roots()
-                .unwrap()
-                .https_or_http()
-                .enable_http2()
-                .build(),
-        ),
-        NoToken,
-    );
+    HYPER
+        .set(
+            hyper::Client::builder().build(
+                HttpsConnectorBuilder::new()
+                    .with_native_roots()
+                    .unwrap()
+                    .https_or_http()
+                    .enable_http2()
+                    .build(),
+            ),
+        )
+        .expect("Somehow a race condition for HYPER???");
+
+    let youtube = YouTube::new(HYPER.get().unwrap().clone(), NoToken);
 
     // Have to do this instead of .expect(...) because YouTube doesn't implement Debug...
     match YOUTUBE.set(youtube) {
