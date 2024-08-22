@@ -200,7 +200,7 @@ async fn main() -> Result<(), sqlx::Error> {
 
     println!(
         "{:?}",
-        crate::youtube::get_upload_playlist_id("https://www.youtube.com/@dr.fatima").await
+        crate::youtube::get_uploads_from_playlist("UUUNtD-UN-fQHHteLHK9HgvQ").await
     );
 
     // Start the client.

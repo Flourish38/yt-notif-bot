@@ -1,25 +1,29 @@
 use std::fmt::Debug;
 
-use crate::HYPER;
-use google_youtube3::hyper;
+use crate::{HYPER, KEY, YOUTUBE};
+use google_youtube3::{
+    api::PlaylistItemContentDetails,
+    chrono::{DateTime, Utc},
+    hyper,
+};
 use hyper::{body, http::uri::InvalidUri, StatusCode};
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum ChannelIdError {
+pub enum PlaylistIdError {
     UriParseError(InvalidUri),
     Hyper(hyper::Error),
     BadStatus(StatusCode),
     BodyParseError(String),
 }
 
-impl From<hyper::Error> for ChannelIdError {
+impl From<hyper::Error> for PlaylistIdError {
     fn from(value: hyper::Error) -> Self {
         Self::Hyper(value)
     }
 }
 
-impl From<InvalidUri> for ChannelIdError {
+impl From<InvalidUri> for PlaylistIdError {
     fn from(value: InvalidUri) -> Self {
         Self::UriParseError(value)
     }
@@ -27,9 +31,10 @@ impl From<InvalidUri> for ChannelIdError {
 
 pub async fn get_upload_playlist_id(
     channel_uri: impl Into<String>,
-) -> Result<String, ChannelIdError> {
+) -> Result<String, PlaylistIdError> {
     let channel_uri = channel_uri.into();
     let mut channel_uri_buf = channel_uri.clone();
+    // /search page is about 100KB smaller
     channel_uri_buf.push_str("/search");
 
     let uri = channel_uri_buf.try_into()?;
@@ -38,7 +43,7 @@ pub async fn get_upload_playlist_id(
 
     let b = match response.status() {
         StatusCode::OK => Ok(response.into_body()),
-        s => Err(ChannelIdError::BadStatus(s)),
+        s => Err(PlaylistIdError::BadStatus(s)),
     }?;
 
     let bytes = body::to_bytes(b).await?;
@@ -50,11 +55,14 @@ pub async fn get_upload_playlist_id(
         if prefix_index >= prefix_bytes.len() {
             if byte == b'"' {
                 if buf.len() == 0 {
+                    // just in case there's a starting quote, which there almost certainly isn't
                     continue;
                 } else {
+                    // ending quote, break the loop, we're done!
                     break;
                 }
             } else {
+                // channel Ids start "UC", and the corresponding upload playlist starts "UU"
                 if buf.len() == 1 && byte == b'C' {
                     buf.push('U');
                 } else {
@@ -69,8 +77,80 @@ pub async fn get_upload_playlist_id(
     }
 
     if buf.len() != 24 || &buf[0..2] == "UU" {
-        Err(ChannelIdError::BodyParseError(channel_uri))
+        Err(PlaylistIdError::BodyParseError(channel_uri))
     } else {
         Ok(buf)
+    }
+}
+
+#[derive(Debug)]
+pub enum MissingContent {
+    ContentDetails,
+    VideoId,
+    VideoPublishedAt,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum UploadsError {
+    YouTube3(google_youtube3::Error),
+    // Empty(PlaylistItemListResponse),
+    MissingContent(MissingContent),
+}
+
+impl From<google_youtube3::Error> for UploadsError {
+    fn from(value: google_youtube3::Error) -> Self {
+        UploadsError::YouTube3(value)
+    }
+}
+
+impl From<MissingContent> for UploadsError {
+    fn from(value: MissingContent) -> Self {
+        Self::MissingContent(value)
+    }
+}
+
+#[derive(Debug)]
+pub struct Video {
+    id: String,
+    published_at: DateTime<Utc>,
+}
+
+impl TryFrom<PlaylistItemContentDetails> for Video {
+    type Error = MissingContent;
+
+    fn try_from(value: PlaylistItemContentDetails) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: value.video_id.ok_or(MissingContent::VideoId)?,
+            published_at: value
+                .video_published_at
+                .ok_or(MissingContent::VideoPublishedAt)?,
+        })
+    }
+}
+
+pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, UploadsError> {
+    let response = YOUTUBE
+        .get()
+        .unwrap()
+        .playlist_items()
+        .list(&vec!["contentDetails".into()])
+        .playlist_id(playlist_id)
+        .max_results(50)
+        .param("key", KEY.get().unwrap())
+        .doit()
+        .await?
+        .1;
+
+    match response.items {
+        None => Ok(vec![]),
+        Some(items) => Ok(items
+            .into_iter()
+            .map(|pi| {
+                pi.content_details
+                    .ok_or(MissingContent::ContentDetails)?
+                    .try_into()
+            })
+            .collect::<Result<Vec<Video>, MissingContent>>()?),
     }
 }
