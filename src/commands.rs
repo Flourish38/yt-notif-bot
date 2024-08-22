@@ -1,10 +1,11 @@
-use crate::db::{add_channel, get_channels_to_send, get_playlists};
+use crate::db::{add_channel, get_channels_to_send, get_playlists, update_most_recent};
 use crate::generate_components::make_button;
 use crate::youtube::{
-    get_upload_playlist_id, get_uploads_from_playlist, PlaylistIdError, UploadsError,
+    get_upload_playlist_id, get_uploads_from_playlist, PlaylistIdError, UploadsError, Video,
 };
 use crate::ADMIN_USERS;
 
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use serenity::all::{
@@ -258,8 +259,9 @@ async fn subscribe_command(ctx: Context, command: CommandInteraction) -> Result<
     }
 }
 
-struct Workunit {
-    video_id: String,
+struct Workunit<'a> {
+    playlist_id: &'a String,
+    video: Video,
     channel_id: ChannelId,
 }
 
@@ -299,7 +301,8 @@ pub async fn update_loop(sleep_seconds: u64, http: impl CacheHttp) {
                             Ok(channels) => {
                                 for channel in channels {
                                     workunits.push(Workunit {
-                                        video_id: video.id.clone(),
+                                        playlist_id: playlist_id,
+                                        video: video.clone(),
                                         channel_id: channel,
                                     })
                                 }
@@ -311,23 +314,66 @@ pub async fn update_loop(sleep_seconds: u64, http: impl CacheHttp) {
         }
 
         let workunits_len = workunits.len();
+        if workunits_len == 0 {
+            sleep(duration).await;
+            continue;
+        }
         let duration = duration / workunits_len as u32;
         println!("{} workunits", workunits_len);
-        for workunit in workunits {
+        let mut db_retries = VecDeque::new();
+        for w in workunits {
             sleep(duration).await;
-            match workunit
+            match w
                 .channel_id
                 .send_message(
                     &http,
                     CreateMessage::new()
-                        .content(format!("https://www.youtube.com/{}", workunit.video_id))
+                        .content(format!("https://youtu.be/{}", w.video.id))
                         .flags(MessageFlags::empty()),
                 )
                 .await
             {
                 Err(e) => println!("send_message in update_loop:\t{}", e),
-                Ok(_) => (),
+                Ok(_) => {
+                    if let Err(e) =
+                        update_most_recent(w.playlist_id, &w.channel_id, &w.video.published_at)
+                            .await
+                    {
+                        println!(
+                            "update_most_recent in update_loop:\t{}\n
+                            DB in illegal state, will be fixed later.",
+                            e
+                        );
+                        db_retries.push_back(w);
+                    }
+                }
             };
+        }
+
+        if db_retries.len() != 0 {
+            println!("{} DB update failures to resolve", db_retries.len());
+            let mut failure_count: usize = 0;
+            loop {
+                match db_retries.pop_front() {
+                    None => break,
+                    Some(w) => {
+                        if let Err(_) =
+                            update_most_recent(w.playlist_id, &w.channel_id, &w.video.published_at)
+                                .await
+                        {
+                            failure_count += 1;
+                            db_retries.push_back(w);
+                        }
+                        // at least make an attempt not to throttle the entire system
+                        // this is still sleep_seconds / workunits_len, btw.
+                        sleep(duration).await;
+                    }
+                }
+            }
+            println!(
+                "All failures resolved after {} additional failures.",
+                failure_count
+            );
         }
     }
 }

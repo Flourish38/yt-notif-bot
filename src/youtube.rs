@@ -112,7 +112,7 @@ impl From<MissingContent> for UploadsError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Video {
     pub id: String,
     pub published_at: DateTime<Utc>,

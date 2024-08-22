@@ -19,15 +19,15 @@ fn from_sqlite(str: &str) -> DateTime<Utc> {
 }
 
 pub async fn add_channel(
-    playlist: &String,
-    channel: ChannelId,
+    playlist_id: &String,
+    channel_id: ChannelId,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     query(
         "INSERT INTO channels (playlist_id, channel_id, most_recent)
         VALUES ($1, $2, $3)",
     )
-    .bind(playlist)
-    .bind(channel.get() as i64)
+    .bind(playlist_id)
+    .bind(channel_id.get() as i64)
     .bind(into_sqlite(&DateTime::default()))
     .execute(DB.get().unwrap())
     .await
@@ -60,4 +60,22 @@ pub async fn get_channels_to_send(
     .into_iter()
     .map(|s| Ok(ChannelId::new(s.try_get(0)?)))
     .collect()
+}
+
+pub async fn update_most_recent(
+    playlist_id: &String,
+    channel_id: &ChannelId,
+    new_value: &DateTime<Utc>,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    query(
+        "UPDATE channels
+    SET most_recent = $1
+    WHERE playlist_id == $2
+    AND channel_id == $3",
+    )
+    .bind(into_sqlite(new_value))
+    .bind(playlist_id)
+    .bind(channel_id.get() as i64)
+    .execute(DB.get().unwrap())
+    .await
 }
