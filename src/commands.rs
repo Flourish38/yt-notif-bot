@@ -1,11 +1,14 @@
+use crate::db::add_channel;
 use crate::generate_components::make_button;
+use crate::youtube::{get_upload_playlist_id, PlaylistIdError};
 use crate::ADMIN_USERS;
 
 use std::time::Instant;
 
 use serenity::all::{
-    CommandInteraction, Context, CreateActionRow, CreateCommand, CreateInteractionResponse,
-    CreateInteractionResponseMessage, EditInteractionResponse,
+    CommandInteraction, CommandOptionType, Context, CreateActionRow, CreateCommand,
+    CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
+    EditInteractionResponse, ResolvedValue,
 };
 use serenity::model::prelude::ButtonStyle;
 use serenity::prelude::SerenityError;
@@ -36,12 +39,51 @@ where
         .await
 }
 
+async fn simple_defer(
+    ctx: &Context,
+    command: &CommandInteraction,
+    ephemeral: bool,
+) -> Result<(), SerenityError> {
+    command
+        .create_response(
+            &ctx.http,
+            CreateInteractionResponse::Defer(
+                CreateInteractionResponseMessage::new().ephemeral(ephemeral),
+            ),
+        )
+        .await
+}
+
+async fn edit_deferred_message_simple<D>(
+    ctx: &Context,
+    command: &CommandInteraction,
+    content: D,
+) -> Result<(), SerenityError>
+where
+    D: Into<String>,
+{
+    command
+        .edit_response(&ctx.http, EditInteractionResponse::new().content(content))
+        .await?;
+    Ok(())
+}
+
 pub fn create_commands() -> Vec<CreateCommand> {
     // DON'T FORGET to add your custom commands here!!
     vec![
         CreateCommand::new("help").description("Information on how to use the bot"),
         CreateCommand::new("ping").description("A ping command"),
         CreateCommand::new("shutdown").description("Shut down the bot"),
+        CreateCommand::new("subscribe")
+            .description("Receive notifications from a YouTube channel in this channel")
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "channel_url",
+                    "Url of the YouTube channel",
+                )
+                .required(true),
+            ),
     ]
 }
 // Any custom slash commands must be added both to create_commands ^^^ and to handle_command!!
@@ -54,6 +96,7 @@ pub async fn handle_command(
         "help" => help_command(ctx, command).await,
         "ping" => ping_command(ctx, command).await,
         "shutdown" => shutdown_command(ctx, command).await,
+        "subscribe" => subscribe_command(ctx, command).await,
         _ => nyi_command(ctx, command).await,
     }
 }
@@ -84,14 +127,7 @@ async fn ping_command(ctx: Context, command: CommandInteraction) -> Result<(), S
     let start_time = Instant::now();
     // Use awaiting the message as a delay to calculate the ping.
     // This gives very inconsistent results, but imo is probably closer to what you want than a heartbeat ping.
-    command
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Defer(
-                CreateInteractionResponseMessage::new().ephemeral(true),
-            ),
-        )
-        .await?;
+    simple_defer(&ctx, &command, true).await?;
     let mut duration = start_time.elapsed().as_millis().to_string();
     duration.push_str(" ms");
     command
@@ -140,4 +176,80 @@ async fn shutdown_command(ctx: Context, command: CommandInteraction) -> Result<(
     // I'm pretty sure this is unnecessary but it makes me happier than not doing it
     ctx.shard.shutdown_clean();
     Ok(())
+}
+
+async fn subscribe_command(ctx: Context, command: CommandInteraction) -> Result<(), SerenityError> {
+    simple_defer(&ctx, &command, true).await?;
+
+    let channel_url = match &command.data.options()[0].value {
+        ResolvedValue::String(s) => *s,
+        v => {
+            return edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!("Invalid type for channel url parameter: {:?}", v),
+            )
+            .await
+        }
+    };
+
+    let playlist_id = match get_upload_playlist_id(channel_url).await {
+        Ok(v) => v,
+        Err(PlaylistIdError::BadStatus(status)) => {
+            return edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!("HTTP request returned bad status code: {}", status),
+            )
+            .await
+        }
+        Err(PlaylistIdError::BodyParseError(e)) => {
+            return edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!(
+                    "Could not find channel ID on webpage at webpage with address: \"{}\"",
+                    e
+                ),
+            )
+            .await
+        }
+        Err(PlaylistIdError::Hyper(e)) => {
+            return edit_deferred_message_simple(&ctx, &command, format!("HTTP Error: {}", e)).await
+        }
+        Err(PlaylistIdError::UriParseError(_)) => {
+            return edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!(
+                    "Invalid URL. Please make sure you typed it correctly.\nRecieved: {}",
+                    channel_url
+                ),
+            )
+            .await
+        }
+    };
+
+    match add_channel(&playlist_id, command.channel_id).await {
+        Ok(_) => {
+            edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!(
+                    "Successfully subscribed channel {} to uploads playlist {}.",
+                    command.channel_id.get(),
+                    playlist_id
+                ),
+            )
+            .await
+        }
+        Err(e) => {
+            edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!("Failed to add entry to database: {}", e),
+            )
+            .await
+        }
+    }
 }

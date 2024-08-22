@@ -4,6 +4,7 @@
 
 mod commands;
 mod components;
+mod db;
 mod generate_components;
 mod youtube;
 
@@ -100,7 +101,8 @@ async fn main() -> Result<(), sqlx::Error> {
             "CREATE TABLE IF NOT EXISTS channels (
                 playlist_id TEXT NOT NULL,
                 channel_id INTEGER NOT NULL,
-                most_recent TEXT NOT NULL CHECK ( DATETIME (most_recent) IS most_recent )
+                most_recent TEXT NOT NULL CHECK ( DATETIME(most_recent) IS most_recent ),
+                PRIMARY KEY (playlist_id, channel_id)
             ) STRICT",
         )
         .execute(&db)
@@ -198,16 +200,11 @@ async fn main() -> Result<(), sqlx::Error> {
         }
     });
 
-    println!(
-        "{:?}",
-        crate::youtube::get_uploads_from_playlist("UUUNtD-UN-fQHHteLHK9HgvQ").await
-    );
-
     // Start the client.
-    // match client.start().await {
-    //     Err(why) => println!("Client error: {}", why),
-    //     Ok(_) => println!("Client shutdown cleanly"),
-    // }
+    match client.start().await {
+        Err(why) => println!("Client error: {}", why),
+        Ok(_) => println!("Client shutdown cleanly"),
+    }
 
     Ok(())
 }

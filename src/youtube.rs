@@ -32,12 +32,14 @@ impl From<InvalidUri> for PlaylistIdError {
 pub async fn get_upload_playlist_id(
     channel_uri: impl Into<String>,
 ) -> Result<String, PlaylistIdError> {
-    let channel_uri = channel_uri.into();
-    let mut channel_uri_buf = channel_uri.clone();
+    let mut channel_uri = channel_uri
+        .into()
+        .replace("youtu.be", "www.youtube.com")
+        .replace("m.youtube.com", "www.youtube.com");
     // /search page is about 100KB smaller
-    channel_uri_buf.push_str("/search");
+    channel_uri.push_str("/search");
 
-    let uri = channel_uri_buf.try_into()?;
+    let uri = channel_uri.clone().try_into()?;
 
     let response = HYPER.get().unwrap().get(uri).await?;
 
@@ -76,7 +78,7 @@ pub async fn get_upload_playlist_id(
         }
     }
 
-    if buf.len() != 24 || &buf[0..2] == "UU" {
+    if buf.len() != 24 || &buf[0..2] != "UU" {
         Err(PlaylistIdError::BodyParseError(channel_uri))
     } else {
         Ok(buf)
