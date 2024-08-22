@@ -114,8 +114,8 @@ impl From<MissingContent> for UploadsError {
 
 #[derive(Debug)]
 pub struct Video {
-    id: String,
-    published_at: DateTime<Utc>,
+    pub id: String,
+    pub published_at: DateTime<Utc>,
 }
 
 impl TryFrom<PlaylistItemContentDetails> for Video {

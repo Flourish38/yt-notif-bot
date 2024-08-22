@@ -1,20 +1,24 @@
-use crate::db::add_channel;
+use crate::db::{add_channel, get_channels_to_send, get_playlists};
 use crate::generate_components::make_button;
-use crate::youtube::{get_upload_playlist_id, PlaylistIdError};
+use crate::youtube::{
+    get_upload_playlist_id, get_uploads_from_playlist, PlaylistIdError, UploadsError,
+};
 use crate::ADMIN_USERS;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serenity::all::{
-    CommandInteraction, CommandOptionType, Context, CreateActionRow, CreateCommand,
-    CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
-    EditInteractionResponse, ResolvedValue,
+    CacheHttp, ChannelId, CommandInteraction, CommandOptionType, Context, CreateActionRow,
+    CreateCommand, CreateCommandOption, CreateInteractionResponse,
+    CreateInteractionResponseMessage, CreateMessage, EditInteractionResponse, MessageFlags,
+    ResolvedValue,
 };
 use serenity::model::prelude::ButtonStyle;
 use serenity::prelude::SerenityError;
 
 // needed for shutdown command
 use tokio::sync::{mpsc::Sender, OnceCell};
+use tokio::time::sleep;
 
 pub static SHUTDOWN_SENDER: OnceCell<Sender<bool>> = OnceCell::const_new();
 
@@ -250,6 +254,80 @@ async fn subscribe_command(ctx: Context, command: CommandInteraction) -> Result<
                 format!("Failed to add entry to database: {}", e),
             )
             .await
+        }
+    }
+}
+
+struct Workunit {
+    video_id: String,
+    channel_id: ChannelId,
+}
+
+pub async fn update_loop(sleep_seconds: u64, http: impl CacheHttp) {
+    let duration = Duration::from_secs(sleep_seconds);
+    loop {
+        println!("Checking all playlists in DB.");
+        let playlists = match get_playlists().await {
+            Ok(v) => v,
+            Err(e) => {
+                println!("get_playlists in update_loop:\t{}", e);
+                sleep(duration).await;
+                continue;
+            }
+        };
+        let playlists_len = playlists.len() as u32;
+        println!("{} playlists", playlists_len);
+        if playlists_len == 0 {
+            sleep(duration).await;
+            continue;
+        }
+
+        let mut workunits: Vec<Workunit> = vec![];
+        for playlist_id in playlists.iter() {
+            match get_uploads_from_playlist(&playlist_id).await {
+                Err(UploadsError::MissingContent(mc)) => {
+                    println!("get_uploads_from_playlist in update_loop:\t{:?}", mc)
+                }
+                Err(UploadsError::YouTube3(e)) => {
+                    println!("get_uploads_from_playlist in update_loop:\t{}", e);
+                }
+                Ok(mut videos) => {
+                    videos.reverse();
+                    for video in videos {
+                        match get_channels_to_send(&playlist_id, &video.published_at).await {
+                            Err(e) => println!("get_channels_to_send in update_loop:\t{}", e),
+                            Ok(channels) => {
+                                for channel in channels {
+                                    workunits.push(Workunit {
+                                        video_id: video.id.clone(),
+                                        channel_id: channel,
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
+        let workunits_len = workunits.len();
+        let duration = duration / workunits_len as u32;
+        println!("{} workunits", workunits_len);
+        for workunit in workunits {
+            sleep(duration).await;
+            match workunit
+                .channel_id
+                .send_message(
+                    &http,
+                    CreateMessage::new()
+                        .content(format!("https://www.youtube.com/{}", workunit.video_id))
+                        .flags(MessageFlags::empty()),
+                )
+                .await
+            {
+                Err(e) => println!("send_message in update_loop:\t{}", e),
+                Ok(_) => (),
+            };
         }
     }
 }

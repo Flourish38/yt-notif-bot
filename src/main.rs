@@ -79,6 +79,8 @@ impl EventHandler for Handler {
         Command::set_global_commands(&ctx.http, create_commands())
             .await
             .expect("Failed to set application commands");
+
+        tokio::spawn(update_loop(60, ctx.http));
     }
 }
 
