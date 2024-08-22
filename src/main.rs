@@ -6,6 +6,7 @@ mod commands;
 mod components;
 mod db;
 mod generate_components;
+mod update_loop;
 mod youtube;
 
 use commands::*;
@@ -19,6 +20,7 @@ use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{query, Sqlite, SqlitePool};
+use update_loop::update_loop;
 
 use std::env;
 

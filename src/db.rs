@@ -28,7 +28,7 @@ pub async fn add_channel(
     )
     .bind(playlist_id)
     .bind(channel_id.get() as i64)
-    .bind(into_sqlite(&DateTime::default()))
+    .bind(into_sqlite(&Utc::now()))
     .execute(DB.get().unwrap())
     .await
 }
