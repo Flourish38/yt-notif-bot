@@ -2,13 +2,15 @@ use std::fmt::Debug;
 
 use crate::HYPER;
 use google_youtube3::hyper;
-use hyper::{body, StatusCode, Uri};
+use hyper::{body, http::uri::InvalidUri, StatusCode};
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ChannelIdError {
-    UriParseError(<String as TryInto<Uri>>::Error),
+    UriParseError(InvalidUri),
     Hyper(hyper::Error),
     BadStatus(StatusCode),
+    BodyParseError(String),
 }
 
 impl From<hyper::Error> for ChannelIdError {
@@ -17,15 +19,20 @@ impl From<hyper::Error> for ChannelIdError {
     }
 }
 
+impl From<InvalidUri> for ChannelIdError {
+    fn from(value: InvalidUri) -> Self {
+        Self::UriParseError(value)
+    }
+}
+
 pub async fn get_upload_playlist_id(
     channel_uri: impl Into<String>,
 ) -> Result<String, ChannelIdError> {
-    let mut channel_uri = channel_uri.into();
-    channel_uri.push_str("/search");
+    let channel_uri = channel_uri.into();
+    let mut channel_uri_buf = channel_uri.clone();
+    channel_uri_buf.push_str("/search");
 
-    let uri = channel_uri
-        .try_into()
-        .map_err(|e| ChannelIdError::UriParseError(e))?;
+    let uri = channel_uri_buf.try_into()?;
 
     let response = HYPER.get().unwrap().get(uri).await?;
 
@@ -61,8 +68,9 @@ pub async fn get_upload_playlist_id(
         }
     }
 
-    assert!(buf.len() == 24);
-    assert!(&buf[0..2] == "UU");
-
-    Ok(buf)
+    if buf.len() != 24 || &buf[0..2] == "UU" {
+        Err(ChannelIdError::BodyParseError(channel_uri))
+    } else {
+        Ok(buf)
+    }
 }
