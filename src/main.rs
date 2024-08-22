@@ -198,11 +198,16 @@ async fn main() -> Result<(), sqlx::Error> {
         }
     });
 
+    println!(
+        "{:?}",
+        crate::youtube::get_upload_playlist_id("https://www.youtube.com/@dr.fatima").await
+    );
+
     // Start the client.
-    match client.start().await {
-        Err(why) => println!("Client error: {}", why),
-        Ok(_) => println!("Client shutdown cleanly"),
-    }
+    // match client.start().await {
+    //     Err(why) => println!("Client error: {}", why),
+    //     Ok(_) => println!("Client shutdown cleanly"),
+    // }
 
     Ok(())
 }

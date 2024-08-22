@@ -17,7 +17,9 @@ impl From<hyper::Error> for ChannelIdError {
     }
 }
 
-pub async fn get_channel_id(channel_uri: impl Into<String>) -> Result<String, ChannelIdError> {
+pub async fn get_upload_playlist_id(
+    channel_uri: impl Into<String>,
+) -> Result<String, ChannelIdError> {
     let mut channel_uri = channel_uri.into();
     channel_uri.push_str("/search");
 
@@ -34,7 +36,33 @@ pub async fn get_channel_id(channel_uri: impl Into<String>) -> Result<String, Ch
 
     let bytes = body::to_bytes(b).await?;
 
-    println!("{}", bytes.len());
+    let prefix_bytes = *b"channel_id=";
+    let mut prefix_index = 0;
+    let mut buf = String::with_capacity(24);
+    for byte in bytes {
+        if prefix_index >= prefix_bytes.len() {
+            if byte == b'"' {
+                if buf.len() == 0 {
+                    continue;
+                } else {
+                    break;
+                }
+            } else {
+                if buf.len() == 1 && byte == b'C' {
+                    buf.push('U');
+                } else {
+                    buf.push(byte as char);
+                }
+            }
+        } else if byte == prefix_bytes[prefix_index] {
+            prefix_index += 1;
+        } else {
+            prefix_index = 0;
+        }
+    }
 
-    Ok("".to_string())
+    assert!(buf.len() == 24);
+    assert!(&buf[0..2] == "UU");
+
+    Ok(buf)
 }
