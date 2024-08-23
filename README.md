@@ -1,6 +1,6 @@
-# ty-notif-bot
+# yt-notif-bot
 
-This is a discord bot that sends a message whenever a youtube channel that you specify uploads.
+This is a discord bot that sends a message whenever a YouTube channel that you specify uploads.
 
 ### How to run it
 
