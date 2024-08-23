@@ -1,4 +1,4 @@
-use crate::db::add_channel;
+use crate::db::{add_channel, delete_channel};
 use crate::generate_components::make_button;
 use crate::youtube::{get_upload_playlist_id, PlaylistIdError};
 use crate::ADMIN_USERS;
@@ -84,6 +84,16 @@ pub fn create_commands() -> Vec<CreateCommand> {
                 )
                 .required(true),
             ),
+        CreateCommand::new("unsubscribe")
+            .description("Stop receiving notifications from a YouTube channel in this channel")
+            .add_option(
+                CreateCommandOption::new(
+                    CommandOptionType::String,
+                    "channel_url",
+                    "Url of the YouTube channel",
+                )
+                .required(true),
+            ),
     ]
 }
 // Any custom slash commands must be added both to create_commands ^^^ and to handle_command!!
@@ -97,6 +107,7 @@ pub async fn handle_command(
         "ping" => ping_command(ctx, command).await,
         "shutdown" => shutdown_command(ctx, command).await,
         "subscribe" => subscribe_command(ctx, command).await,
+        "unsubscribe" => unsubscribe_command(ctx, command).await,
         _ => nyi_command(ctx, command).await,
     }
 }
@@ -178,57 +189,64 @@ async fn shutdown_command(ctx: Context, command: CommandInteraction) -> Result<(
     Ok(())
 }
 
-async fn subscribe_command(ctx: Context, command: CommandInteraction) -> Result<(), SerenityError> {
-    simple_defer(&ctx, &command, true).await?;
-
-    let channel_url = match &command.data.options()[0].value {
+async fn get_playlist_id_from_url<'a>(
+    value: &ResolvedValue<'a>,
+    ctx: &Context,
+    command: &CommandInteraction,
+) -> Result<String, Result<(), SerenityError>> {
+    let channel_url = match value {
         ResolvedValue::String(s) => *s,
         v => {
-            return edit_deferred_message_simple(
+            return Err(edit_deferred_message_simple(
                 &ctx,
                 &command,
                 format!("Invalid type for channel url parameter: {:?}", v),
             )
-            .await
+            .await)
         }
     };
 
-    let playlist_id = match get_upload_playlist_id(channel_url).await {
-        Ok(v) => v,
-        Err(PlaylistIdError::BadStatus(status)) => {
-            return edit_deferred_message_simple(
-                &ctx,
-                &command,
-                format!("HTTP request returned bad status code: {}", status),
-            )
-            .await
-        }
-        Err(PlaylistIdError::BodyParseError(e)) => {
-            return edit_deferred_message_simple(
-                &ctx,
-                &command,
-                format!(
-                    "Could not find channel ID on webpage at webpage with address: \"{}\"",
-                    e
-                ),
-            )
-            .await
-        }
+    match get_upload_playlist_id(channel_url).await {
+        Ok(v) => Ok(v),
+        Err(PlaylistIdError::BadStatus(status)) => Err(edit_deferred_message_simple(
+            &ctx,
+            &command,
+            format!("HTTP request returned bad status code: {}", status),
+        )
+        .await),
+        Err(PlaylistIdError::BodyParseError(e)) => Err(edit_deferred_message_simple(
+            &ctx,
+            &command,
+            format!(
+                "Could not find channel ID on webpage at webpage with address: \"{}\"",
+                e
+            ),
+        )
+        .await),
         Err(PlaylistIdError::Hyper(e)) => {
-            return edit_deferred_message_simple(&ctx, &command, format!("HTTP Error: {}", e)).await
+            Err(edit_deferred_message_simple(&ctx, &command, format!("HTTP Error: {}", e)).await)
         }
-        Err(PlaylistIdError::UriParseError(_)) => {
-            return edit_deferred_message_simple(
-                &ctx,
-                &command,
-                format!(
-                    "Invalid URL. Please make sure you typed it correctly.\nRecieved: {}",
-                    channel_url
-                ),
-            )
-            .await
-        }
-    };
+
+        Err(PlaylistIdError::UriParseError(_)) => Err(edit_deferred_message_simple(
+            &ctx,
+            &command,
+            format!(
+                "Invalid URL. Please make sure you typed it correctly.\nRecieved: {}",
+                channel_url
+            ),
+        )
+        .await),
+    }
+}
+
+async fn subscribe_command(ctx: Context, command: CommandInteraction) -> Result<(), SerenityError> {
+    simple_defer(&ctx, &command, true).await?;
+
+    let playlist_id =
+        match get_playlist_id_from_url(&command.data.options()[0].value, &ctx, &command).await {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
 
     match add_channel(&playlist_id, command.channel_id).await {
         Ok(_) => {
@@ -248,6 +266,42 @@ async fn subscribe_command(ctx: Context, command: CommandInteraction) -> Result<
                 &ctx,
                 &command,
                 format!("Failed to add entry to database: {}", e),
+            )
+            .await
+        }
+    }
+}
+
+async fn unsubscribe_command(
+    ctx: Context,
+    command: CommandInteraction,
+) -> Result<(), SerenityError> {
+    simple_defer(&ctx, &command, true).await?;
+
+    let playlist_id =
+        match get_playlist_id_from_url(&command.data.options()[0].value, &ctx, &command).await {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+    match delete_channel(&playlist_id, command.channel_id).await {
+        Ok(_) => {
+            edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!(
+                    "Successfully unsubscribed channel {} from uploads playlist {}.",
+                    command.channel_id.get(),
+                    playlist_id
+                ),
+            )
+            .await
+        }
+        Err(e) => {
+            edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!("Failed to remove entry to database: {}", e),
             )
             .await
         }

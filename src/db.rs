@@ -79,3 +79,18 @@ pub async fn update_most_recent(
     .execute(DB.get().unwrap())
     .await
 }
+
+pub async fn delete_channel(
+    playlist_id: &String,
+    channel_id: ChannelId,
+) -> Result<SqliteQueryResult, sqlx::Error> {
+    query(
+        "DELETE FROM channels
+        WHERE playlist_id == $1
+        AND channel_id == $2",
+    )
+    .bind(playlist_id)
+    .bind(channel_id.get() as i64)
+    .execute(DB.get().unwrap())
+    .await
+}

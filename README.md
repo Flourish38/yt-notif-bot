@@ -35,18 +35,9 @@ It will probably take a few minutes to compile, but certainly less than 15 minut
 
 Simply type `/subscribe CHANNEL_URL` to receive a discord message in that channel whenever that YouTube channel uploads a new video.
 It will automatically catch up if it ever misses a video due to being offline, so don't worry about missing any notifications!
+You can type `/unsubscribe CHANNEL_URL` in the same channel to stop receiving notifications.
 
 ## Words of Warning
-
-Currently, there is no way to unsubscribe from a channel. The only ways to do this would be to:
-- Delete the 3 sqlite.db files and start over (easiest, but you have to start from scratch)
-- Open the sqlite db using another program and remove the unwanted rows (moderate difficulty, simplest)
-    - You can identify the right `playlist_id` to delete by going to someone's channel page,
-    clicking "...more" on their description, scrolling down to "Share channel", and selecting
-    "Copy channel ID". It will be of the form `UCxxxx...xxx`, and the corresponding `playlist_id`
-    will be of the form `UUxxxx...xxx`.
-- Modify the code directly (hardest, and I'll probably be doing it soon anyways, so not recommended.)
-    - If you know what you're doing, though, I wouldn't complain about a pull request!
 
 This bot is configured by default to attempt to use all 10,000 daily quota units from the YouTube Data API.
 If you give other projects the same key, someone is going to get rate limited.
