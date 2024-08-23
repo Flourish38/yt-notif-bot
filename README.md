@@ -47,3 +47,6 @@ Currently, there is no way to unsubscribe from a channel. The only ways to do th
     will be of the form `UUxxxx...xxx`.
 - Modify the code directly (hardest, and I'll probably be doing it soon anyways, so not recommended.)
     - If you know what you're doing, though, I wouldn't complain about a pull request!
+
+This bot is configured by default to attempt to use all 10,000 daily quota units from the YouTube Data API.
+If you give other projects the same key, someone is going to get rate limited.

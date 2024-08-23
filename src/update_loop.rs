@@ -4,7 +4,7 @@ use crate::youtube::{get_uploads_from_playlist, UploadsError, Video};
 use std::collections::VecDeque;
 use std::time::Duration;
 
-use serenity::all::{CacheHttp, ChannelId, CreateMessage, MessageFlags};
+use serenity::all::{CacheHttp, ChannelId, CreateMessage, Message, MessageFlags};
 
 use tokio::time::sleep;
 
@@ -14,18 +14,24 @@ struct Workunit<'a> {
     channel_id: ChannelId,
 }
 
-async fn get_workunits<'a>(playlists: &'a Vec<String>) -> Vec<Workunit<'a>> {
-    let mut workunits: Vec<Workunit> = vec![];
+async fn process_playlists<'a>(
+    playlists: &'a Vec<String>,
+    duration: Duration,
+    http: impl CacheHttp,
+) -> () {
     for playlist_id in playlists.iter() {
+        let mut workunits: Vec<Workunit> = vec![];
         let mut videos = match get_uploads_from_playlist(&playlist_id).await {
             Ok(v) => v,
 
             Err(UploadsError::MissingContent(mc)) => {
-                println!("get_uploads_from_playlist in update_loop:\t{:?}", mc);
+                println!("get_uploads_from_playlist in process_playlists:\t{:?}", mc);
+                sleep(duration).await;
                 continue;
             }
             Err(UploadsError::YouTube3(e)) => {
-                println!("get_uploads_from_playlist in update_loop:\t{}", e);
+                println!("get_uploads_from_playlist in process_playlists:\t{}", e);
+                sleep(duration).await;
                 continue;
             }
         };
@@ -36,7 +42,7 @@ async fn get_workunits<'a>(playlists: &'a Vec<String>) -> Vec<Workunit<'a>> {
                 Ok(v) => v,
 
                 Err(e) => {
-                    println!("get_channels_to_send in update_loop:\t{}", e);
+                    println!("get_channels_to_send in process_playlists:\t{}", e);
                     continue;
                 }
             };
@@ -49,20 +55,34 @@ async fn get_workunits<'a>(playlists: &'a Vec<String>) -> Vec<Workunit<'a>> {
                 })
             }
         }
+
+        do_workunits(workunits, duration, &http).await;
     }
-    workunits
 }
 
-async fn do_workunits<'a>(
-    workunits: Vec<Workunit<'a>>,
-    reduced_duration: Duration,
-    http: impl CacheHttp,
-) {
+fn reduce_duration(duration: Duration, n: usize) -> Option<Duration> {
+    match n.try_into() {
+        Ok(v) => duration.checked_div(v),
+        Err(_) => {
+            println!("Insane amount of workunits!!! {}", n);
+            // if there are more than 2^32 workunits to get through... maybe sleeping isn't such a good idea.
+            Some(Duration::ZERO)
+        }
+    }
+}
+
+async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, duration: Duration, http: impl CacheHttp) {
+    let reduced_duration = match reduce_duration(duration, workunits.len()) {
+        Some(d) => d,
+        None => {
+            sleep(duration).await;
+            return;
+        }
+    };
+
     let mut db_retries = VecDeque::new();
     for w in workunits {
-        sleep(reduced_duration).await;
-
-        if let Err(e) = w
+        let msg = match w
             .channel_id
             .send_message(
                 &http,
@@ -72,23 +92,42 @@ async fn do_workunits<'a>(
             )
             .await
         {
-            println!("send_message in update_loop:\t{}", e);
-            continue;
-        }
+            Err(e) => {
+                println!("send_message in do_workunits:\t{}", e);
+                sleep(reduced_duration).await;
+                continue;
+            }
+            Ok(msg) => msg,
+        };
 
-        if let Err(e) =
-            update_most_recent(w.playlist_id, &w.channel_id, &w.video.published_at).await
-        {
+        update_db_entry(&mut db_retries, w, msg, &http).await;
+        sleep(reduced_duration).await;
+    }
+
+    resync_db(db_retries, duration).await
+}
+
+async fn update_db_entry<'a>(
+    db_retries: &mut VecDeque<Workunit<'a>>,
+    w: Workunit<'a>,
+    msg: Message,
+    http: impl CacheHttp,
+) {
+    if let Err(e) = update_most_recent(w.playlist_id, &w.channel_id, &w.video.published_at).await {
+        println!(
+            "update_most_recent in update_db_entry:\t{}\n
+            Attempting to delete message to regain consistency...",
+            e
+        );
+        if let Err(e) = msg.delete(http).await {
             println!(
-                "update_most_recent in update_loop:\t{}\n
-                        DB in illegal state, will be fixed later.",
+                "msg.delete in update_db_entry:\t{}\n
+                Uh oh. Adding to queue to be reprocessed later.",
                 e
             );
             db_retries.push_back(w);
         }
     }
-
-    resync_db(db_retries, reduced_duration).await
 }
 
 async fn resync_db<'a>(mut db_retries: VecDeque<Workunit<'a>>, reduced_duration: Duration) {
@@ -120,8 +159,13 @@ async fn resync_db<'a>(mut db_retries: VecDeque<Workunit<'a>>, reduced_duration:
 
 // This function is ugly, but not terribly complicated.
 // Just lots, and lots, of error handling.
-pub async fn update_loop(sleep_seconds: u64, http: impl CacheHttp) {
-    let duration = Duration::from_secs(sleep_seconds);
+pub async fn update_loop(http: impl CacheHttp) {
+    // 1 day / 10,000 (which is the rate limit)
+    let duration = Duration::from_secs(
+        60 // 60 seconds per minute
+        * 60 // 60 minutes per hour
+        * 24, // 24 hours per day
+    ) / 10000;
     loop {
         let playlists = match get_playlists().await {
             Ok(v) => v,
@@ -133,30 +177,11 @@ pub async fn update_loop(sleep_seconds: u64, http: impl CacheHttp) {
             }
         };
 
-        let playlists_len = playlists.len();
-        if playlists_len == 0 {
+        if playlists.len() == 0 {
             sleep(duration).await;
             continue;
         }
 
-        let workunits = get_workunits(&playlists).await;
-
-        let reduced_duration = match workunits.len().try_into() {
-            Ok(v) => match duration.checked_div(v) {
-                Some(d) => d,
-                None => {
-                    // no workunits
-                    sleep(duration).await;
-                    continue;
-                }
-            },
-            Err(_) => {
-                println!("Insane amount of workunits!!! {}", workunits.len());
-                // if there are more than 2^32 workunits to get through... maybe sleeping isn't such a good idea.
-                Duration::ZERO
-            }
-        };
-
-        do_workunits(workunits, reduced_duration, &http).await
+        process_playlists(&playlists, duration, &http).await;
     }
 }
