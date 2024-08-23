@@ -4,5 +4,9 @@
 # Your bot's discord token
 token = YOUR_TOKEN_HERE_IN_QUOTES
 
+# Your YouTube Data API key
+key = YOUR_KEY_HERE_IN_QUOTES
+
 # List of user IDs of bot administrators
 admins = [  ]
+
