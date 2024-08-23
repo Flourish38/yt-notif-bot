@@ -82,7 +82,7 @@ impl EventHandler for Handler {
             .await
             .expect("Failed to set application commands");
 
-        tokio::spawn(update_loop(60, ctx.http));
+        tokio::spawn(update_loop(60 * 15, ctx.http));
     }
 }
 
