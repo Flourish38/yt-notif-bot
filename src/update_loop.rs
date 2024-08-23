@@ -123,7 +123,6 @@ async fn resync_db<'a>(mut db_retries: VecDeque<Workunit<'a>>, reduced_duration:
 pub async fn update_loop(sleep_seconds: u64, http: impl CacheHttp) {
     let duration = Duration::from_secs(sleep_seconds);
     loop {
-        println!("Checking all playlists in DB.");
         let playlists = match get_playlists().await {
             Ok(v) => v,
 
@@ -135,7 +134,6 @@ pub async fn update_loop(sleep_seconds: u64, http: impl CacheHttp) {
         };
 
         let playlists_len = playlists.len();
-        println!("{} playlists", playlists_len);
         if playlists_len == 0 {
             sleep(duration).await;
             continue;
