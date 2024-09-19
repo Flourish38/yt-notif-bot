@@ -24,7 +24,7 @@ pub async fn add_channel(
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     query(
         "INSERT INTO channels (playlist_id, channel_id, most_recent)
-        VALUES ($1, $2, $3)",
+            VALUES ($1, $2, $3)",
     )
     .bind(playlist_id)
     .bind(channel_id.get() as i64)
@@ -33,20 +33,29 @@ pub async fn add_channel(
     .await
 }
 
-pub async fn get_num_playlists() -> Result<u32, sqlx::Error> {
-    query("SELECT COUNT(DISTINCT playlist_id) playlist_id FROM channels")
-        .fetch_one(DB.get().unwrap())
-        .await?
-        .try_get(0)
+// i32 is obviously the incorrect type, but it makes for one less potential conversion error in howmany_command.
+// Also, in order for that to be an issue, you would need so many playlists that it would be 588 years before you check the same one twice.
+pub async fn get_num_playlists() -> Result<i32, sqlx::Error> {
+    query(
+        "SELECT COUNT(DISTINCT playlist_id) playlist_id 
+            FROM channels",
+    )
+    .fetch_one(DB.get().unwrap())
+    .await?
+    .try_get(0)
 }
 
 pub async fn get_playlists() -> Result<Vec<String>, sqlx::Error> {
-    query("SELECT DISTINCT playlist_id FROM channels")
-        .fetch_all(DB.get().unwrap())
-        .await?
-        .into_iter()
-        .map(|s| s.try_get(0))
-        .collect()
+    query(
+        "SELECT DISTINCT playlist_id 
+            FROM channels 
+            ORDER BY playlist_id",
+    )
+    .fetch_all(DB.get().unwrap())
+    .await?
+    .into_iter()
+    .map(|s| s.try_get(0))
+    .collect()
 }
 
 pub async fn get_channels_to_send(
@@ -55,9 +64,9 @@ pub async fn get_channels_to_send(
 ) -> Result<Vec<ChannelId>, sqlx::Error> {
     query(
         "SELECT DISTINCT channel_id 
-    FROM channels
-    WHERE playlist_id == $1
-    AND most_recent < $2",
+            FROM channels
+            WHERE playlist_id == $1
+            AND most_recent < $2",
     )
     .bind(playlist_id)
     .bind(into_sqlite(published_at))
@@ -76,9 +85,9 @@ pub async fn update_most_recent(
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     query(
         "UPDATE channels
-    SET most_recent = $1
-    WHERE playlist_id == $2
-    AND channel_id == $3",
+            SET most_recent = $1
+            WHERE playlist_id == $2
+            AND channel_id == $3",
     )
     .bind(into_sqlite(new_value))
     .bind(playlist_id)
@@ -93,8 +102,8 @@ pub async fn delete_channel(
 ) -> Result<SqliteQueryResult, sqlx::Error> {
     query(
         "DELETE FROM channels
-        WHERE playlist_id == $1
-        AND channel_id == $2",
+            WHERE playlist_id == $1
+            AND channel_id == $2",
     )
     .bind(playlist_id)
     .bind(channel_id.get() as i64)

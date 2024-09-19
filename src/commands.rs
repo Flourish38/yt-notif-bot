@@ -5,6 +5,7 @@ use crate::{ADMIN_USERS, TIME_PER_REQUEST};
 
 use std::time::Instant;
 
+use google_youtube3::chrono::{OutOfRangeError, TimeDelta};
 use serenity::all::{
     CommandInteraction, CommandOptionType, Context, CreateActionRow, CreateCommand,
     CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
@@ -310,16 +311,20 @@ async fn unsubscribe_command(
     }
 }
 
+// Result.unwrap() is not const for reasons I do not fully comprehend.
+const TIMEDELTA_PER_REQUEST: Result<TimeDelta, OutOfRangeError> =
+    TimeDelta::from_std(TIME_PER_REQUEST);
+
 async fn howmany_command(ctx: Context, command: CommandInteraction) -> Result<(), SerenityError> {
     simple_defer(&ctx, &command, true).await?;
 
     match get_num_playlists().await {
         Ok(n) => {
-            let full_duration = TIME_PER_REQUEST * n;
+            let full_duration = TIMEDELTA_PER_REQUEST.unwrap() * n;
             edit_deferred_message_simple(
                 &ctx,
                 &command,
-                format!("Checking {} playlists every {:#?}.", n, full_duration),
+                format!("Checking {} playlists every {}.", n, full_duration),
             )
             .await
         }
