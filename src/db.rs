@@ -33,9 +33,9 @@ pub async fn add_channel(
     .await
 }
 
-// i32 is obviously the incorrect type, but it makes for one less potential conversion error in howmany_command.
-// Also, in order for that to be an issue, you would need so many playlists that it would be 588 years before you check the same one twice.
-pub async fn get_num_playlists() -> Result<i32, sqlx::Error> {
+// u32 is technically the incorrect type, but it makes for one less potential conversion error in howmany_command.
+// Also, in order for that to be an issue, you would need so many playlists that it would be 1176 years before you check the same one twice.
+pub async fn get_num_playlists() -> Result<u32, sqlx::Error> {
     query(
         "SELECT COUNT(DISTINCT playlist_id) playlist_id 
             FROM channels",

@@ -3,9 +3,8 @@ use crate::generate_components::make_button;
 use crate::youtube::{get_upload_playlist_id, PlaylistIdError};
 use crate::{ADMIN_USERS, TIME_PER_REQUEST};
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use google_youtube3::chrono::{OutOfRangeError, TimeDelta};
 use serenity::all::{
     CommandInteraction, CommandOptionType, Context, CreateActionRow, CreateCommand,
     CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
@@ -311,20 +310,44 @@ async fn unsubscribe_command(
     }
 }
 
-// Result.unwrap() is not const for reasons I do not fully comprehend.
-const TIMEDELTA_PER_REQUEST: Result<TimeDelta, OutOfRangeError> =
-    TimeDelta::from_std(TIME_PER_REQUEST);
+fn format_duration(d: Duration) -> String {
+    let s = d.as_secs();
+    let dd = s / 60 / 60 / 24;
+    let hh = s / 60 / 60 % 24;
+    let mm = s / 60 % 60;
+    let ss = s % 60;
+    let ns = d.subsec_nanos();
+    let mut buffer = if dd > 0 {
+        format!("{}d {:0<2}h {:0<2}m {:0<2}", dd, hh, mm, ss)
+    } else if hh > 0 {
+        format!("{}h {:0<2}m {:0<2}", hh, mm, ss)
+    } else if mm > 0 {
+        format!("{}m {:0<2}", mm, ss)
+    } else {
+        ss.to_string()
+    };
+    if ns > 0 {
+        buffer.push('.');
+        buffer.push_str(ns.to_string().trim_end_matches('0'));
+    }
+    buffer.push('s');
+    buffer
+}
 
 async fn howmany_command(ctx: Context, command: CommandInteraction) -> Result<(), SerenityError> {
     simple_defer(&ctx, &command, true).await?;
 
     match get_num_playlists().await {
         Ok(n) => {
-            let full_duration = TIMEDELTA_PER_REQUEST.unwrap() * n;
+            let full_duration = TIME_PER_REQUEST * n;
             edit_deferred_message_simple(
                 &ctx,
                 &command,
-                format!("Checking {} playlists every {}.", n, full_duration),
+                format!(
+                    "Checking {} playlists every {}.",
+                    n,
+                    format_duration(full_duration)
+                ),
             )
             .await
         }
