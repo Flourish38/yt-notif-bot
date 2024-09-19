@@ -33,6 +33,13 @@ pub async fn add_channel(
     .await
 }
 
+pub async fn get_num_playlists() -> Result<u32, sqlx::Error> {
+    query("SELECT COUNT(DISTINCT playlist_id) playlist_id FROM channels")
+        .fetch_one(DB.get().unwrap())
+        .await?
+        .try_get(0)
+}
+
 pub async fn get_playlists() -> Result<Vec<String>, sqlx::Error> {
     query("SELECT DISTINCT playlist_id FROM channels")
         .fetch_all(DB.get().unwrap())

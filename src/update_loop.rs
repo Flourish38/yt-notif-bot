@@ -1,5 +1,6 @@
 use crate::db::{get_channels_to_send, get_playlists, update_most_recent};
 use crate::youtube::{get_uploads_from_playlist, UploadsError, Video};
+use crate::TIME_PER_REQUEST;
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -14,11 +15,7 @@ struct Workunit<'a> {
     channel_id: ChannelId,
 }
 
-async fn process_playlists<'a>(
-    playlists: &'a Vec<String>,
-    duration: Duration,
-    http: impl CacheHttp,
-) -> () {
+async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp) -> () {
     for playlist_id in playlists.iter() {
         let mut workunits: Vec<Workunit> = vec![];
         let mut videos = match get_uploads_from_playlist(&playlist_id).await {
@@ -26,12 +23,12 @@ async fn process_playlists<'a>(
 
             Err(UploadsError::MissingContent(mc)) => {
                 println!("get_uploads_from_playlist in process_playlists:\t{:?}", mc);
-                sleep(duration).await;
+                sleep(TIME_PER_REQUEST).await;
                 continue;
             }
             Err(UploadsError::YouTube3(e)) => {
                 println!("get_uploads_from_playlist in process_playlists:\t{}", e);
-                sleep(duration).await;
+                sleep(TIME_PER_REQUEST).await;
                 continue;
             }
         };
@@ -56,7 +53,7 @@ async fn process_playlists<'a>(
             }
         }
 
-        do_workunits(workunits, duration, &http).await;
+        do_workunits(workunits, &http).await;
     }
 }
 
@@ -71,11 +68,12 @@ fn reduce_duration(duration: Duration, n: usize) -> Option<Duration> {
     }
 }
 
-async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, duration: Duration, http: impl CacheHttp) {
-    let reduced_duration = match reduce_duration(duration, workunits.len()) {
+async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
+    let reduced_duration = match reduce_duration(TIME_PER_REQUEST, workunits.len()) {
         Some(d) => d,
         None => {
-            sleep(duration).await;
+            // There must be zero workunits, sleep to avoid requesting too quickly
+            sleep(TIME_PER_REQUEST).await;
             return;
         }
     };
@@ -104,7 +102,7 @@ async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, duration: Duration, http
         sleep(reduced_duration).await;
     }
 
-    resync_db(db_retries, duration).await
+    resync_db(db_retries, reduced_duration).await
 }
 
 async fn update_db_entry<'a>(
@@ -160,28 +158,22 @@ async fn resync_db<'a>(mut db_retries: VecDeque<Workunit<'a>>, reduced_duration:
 // This function is ugly, but not terribly complicated.
 // Just lots, and lots, of error handling.
 pub async fn update_loop(http: impl CacheHttp) {
-    // 1 day / 10,000 (which is the rate limit)
-    let duration = Duration::from_secs(
-        60 // 60 seconds per minute
-        * 60 // 60 minutes per hour
-        * 24, // 24 hours per day
-    ) / 10000;
     loop {
         let playlists = match get_playlists().await {
             Ok(v) => v,
 
             Err(e) => {
                 println!("get_playlists in update_loop:\t{}", e);
-                sleep(duration).await;
+                sleep(TIME_PER_REQUEST).await;
                 continue;
             }
         };
 
         if playlists.len() == 0 {
-            sleep(duration).await;
+            sleep(TIME_PER_REQUEST).await;
             continue;
         }
 
-        process_playlists(&playlists, duration, &http).await;
+        process_playlists(&playlists, &http).await;
     }
 }

@@ -1,7 +1,7 @@
-use crate::db::{add_channel, delete_channel};
+use crate::db::{add_channel, delete_channel, get_num_playlists};
 use crate::generate_components::make_button;
 use crate::youtube::{get_upload_playlist_id, PlaylistIdError};
-use crate::ADMIN_USERS;
+use crate::{ADMIN_USERS, TIME_PER_REQUEST};
 
 use std::time::Instant;
 
@@ -94,6 +94,7 @@ pub fn create_commands() -> Vec<CreateCommand> {
                 )
                 .required(true),
             ),
+        CreateCommand::new("howmany").description("Print how many playlists are being tracked, and how frequently each playlist is checked")
     ]
 }
 // Any custom slash commands must be added both to create_commands ^^^ and to handle_command!!
@@ -108,6 +109,7 @@ pub async fn handle_command(
         "shutdown" => shutdown_command(ctx, command).await,
         "subscribe" => subscribe_command(ctx, command).await,
         "unsubscribe" => unsubscribe_command(ctx, command).await,
+        "howmany" => howmany_command(ctx, command).await,
         _ => nyi_command(ctx, command).await,
     }
 }
@@ -302,6 +304,30 @@ async fn unsubscribe_command(
                 &ctx,
                 &command,
                 format!("Failed to remove entry to database: {}", e),
+            )
+            .await
+        }
+    }
+}
+
+async fn howmany_command(ctx: Context, command: CommandInteraction) -> Result<(), SerenityError> {
+    simple_defer(&ctx, &command, true).await?;
+
+    match get_num_playlists().await {
+        Ok(n) => {
+            let full_duration = TIME_PER_REQUEST * n;
+            edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!("Checking {} playlists every {:#?}.", n, full_duration),
+            )
+            .await
+        }
+        Err(e) => {
+            edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!("Failed to get number of subscriptions: {}", e),
             )
             .await
         }

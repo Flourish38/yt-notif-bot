@@ -23,6 +23,7 @@ use sqlx::{query, Sqlite, SqlitePool};
 use update_loop::update_loop;
 
 use std::env;
+use std::time::Duration;
 
 use tokio::sync::{mpsc, OnceCell};
 
@@ -52,6 +53,15 @@ static HYPER: OnceCell<hyper::Client<HttpsConnector<HttpConnector>>> = OnceCell:
 static KEY: OnceCell<Box<str>> = OnceCell::const_new();
 
 static YOUTUBE: OnceCell<YouTube<HttpsConnector<HttpConnector>>> = OnceCell::const_new();
+
+// 1 day / 10,000 (which is the rate limit)
+const TIME_PER_REQUEST: Duration = Duration::from_millis(
+    1000 // 1000 milliseconds per second
+    * 60 // 60 seconds per minute
+    * 60 // 60 minutes per hour
+    * 24 // 24 hours per day
+    / 10000, // 10000 requests per day
+);
 
 struct Handler;
 
