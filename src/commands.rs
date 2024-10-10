@@ -318,11 +318,11 @@ fn format_duration(d: Duration) -> String {
     let ss = s % 60;
     let ns = d.subsec_nanos();
     let mut buffer = if dd > 0 {
-        format!("{}d {:0<2}h {:0<2}m {:0<2}", dd, hh, mm, ss)
+        format!("{}d {:02}h {:02}m {:02}", dd, hh, mm, ss)
     } else if hh > 0 {
-        format!("{}h {:0<2}m {:0<2}", hh, mm, ss)
+        format!("{}h {:02}m {:02}", hh, mm, ss)
     } else if mm > 0 {
-        format!("{}m {:0<2}", mm, ss)
+        format!("{}m {:02}", mm, ss)
     } else {
         ss.to_string()
     };
