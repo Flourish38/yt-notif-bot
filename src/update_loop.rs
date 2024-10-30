@@ -1,5 +1,5 @@
 use crate::db::{get_channels_to_send, get_playlists, update_most_recent};
-use crate::youtube::{get_uploads_from_playlist, UploadsError, Video};
+use crate::youtube::{get_uploads_from_playlist, get_videos_durations, UploadsError, Video};
 use crate::TIME_PER_REQUEST;
 
 use std::collections::VecDeque;
@@ -9,15 +9,21 @@ use serenity::all::{CacheHttp, ChannelId, CreateMessage, Message, MessageFlags};
 
 use tokio::time::sleep;
 
+struct IndexWorkunit<'a> {
+    playlist_id: &'a String,
+    index: usize,
+    channel_id: ChannelId,
+}
+
 struct Workunit<'a> {
     playlist_id: &'a String,
     video: Video,
+    duration: String,
     channel_id: ChannelId,
 }
 
 async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp) -> () {
     for playlist_id in playlists.iter() {
-        let mut workunits: Vec<Workunit> = vec![];
         let mut videos = match get_uploads_from_playlist(&playlist_id).await {
             Ok(v) => v,
 
@@ -34,7 +40,10 @@ async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp)
         };
 
         videos.reverse();
-        for video in videos {
+
+        let mut first_index = 0;
+        let mut index_workunits: Vec<IndexWorkunit> = vec![];
+        for (i, video) in videos.iter().enumerate() {
             let channels = match get_channels_to_send(&playlist_id, &video.published_at).await {
                 Ok(v) => v,
 
@@ -44,17 +53,63 @@ async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp)
                 }
             };
 
-            for channel in channels {
-                workunits.push(Workunit {
-                    playlist_id: playlist_id,
-                    video: video.clone(),
-                    channel_id: channel,
-                })
+            if channels.len() == 0 {
+                if first_index == i {
+                    // This if statement only doesn't happen if the videos are not returned in upload order.
+                    // That should never happen, but better safe than sorry.
+                    first_index = i + 1;
+                }
+            } else {
+                for channel in channels {
+                    index_workunits.push(IndexWorkunit {
+                        playlist_id: playlist_id,
+                        index: i,
+                        channel_id: channel,
+                    })
+                }
             }
         }
 
-        do_workunits(workunits, &http).await;
+        let videos_slice = &videos[first_index..];
+
+        if videos_slice.len() != 0 {
+            assign_workunit_duration(videos_slice, index_workunits, first_index, &http).await;
+        } else {
+            sleep(TIME_PER_REQUEST).await;
+        }
     }
+}
+
+async fn assign_workunit_duration<'a>(
+    videos: &[Video],
+    index_workunits: Vec<IndexWorkunit<'a>>,
+    first_index: usize,
+    http: &impl CacheHttp,
+) {
+    sleep(TIME_PER_REQUEST).await; // sleep because we're making another api request, no getting rate-limited!
+    let durations = match get_videos_durations(videos).await {
+        Ok(v) => v,
+        Err(e) => {
+            println!("get_videos_durations in assign_workunit_duration:\t{:?}", e);
+            sleep(TIME_PER_REQUEST).await;
+            return;
+        }
+    };
+
+    let workunits = index_workunits
+        .into_iter()
+        .map(|iw| {
+            let index = iw.index - first_index;
+            Workunit {
+                playlist_id: iw.playlist_id,
+                video: videos[index].clone(),
+                duration: durations[index].clone(),
+                channel_id: iw.channel_id,
+            }
+        })
+        .collect();
+
+    do_workunits(workunits, http).await
 }
 
 fn reduce_duration(duration: Duration, n: usize) -> Option<Duration> {
@@ -85,7 +140,10 @@ async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
             .send_message(
                 &http,
                 CreateMessage::new()
-                    .content(format!("https://youtu.be/{}", w.video.id))
+                    .content(format!(
+                        "https://youtu.be/{} `({})`",
+                        w.video.id, w.duration
+                    ))
                     .flags(MessageFlags::empty()),
             )
             .await

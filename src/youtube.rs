@@ -6,7 +6,7 @@ use google_youtube3::{
     chrono::{DateTime, Utc},
     hyper,
 };
-use hyper::{body, http::uri::InvalidUri, StatusCode};
+use hyper::{body, http::uri::InvalidUri, Body, Response, StatusCode};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -90,10 +90,10 @@ pub enum MissingContent {
     ContentDetails,
     VideoId,
     VideoPublishedAt,
+    VideoDuration,
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum UploadsError {
     YouTube3(google_youtube3::Error),
     // Empty(PlaylistItemListResponse),
@@ -155,4 +155,67 @@ pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, 
             })
             .collect::<Result<Vec<Video>, MissingContent>>()?),
     }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum DurationsError {
+    YouTube3(google_youtube3::Error),
+    MissingContent(MissingContent),
+    Empty(Response<Body>),
+    LengthMismatch(Vec<google_youtube3::api::Video>),
+}
+
+impl From<google_youtube3::Error> for DurationsError {
+    fn from(value: google_youtube3::Error) -> Self {
+        DurationsError::YouTube3(value)
+    }
+}
+
+impl From<MissingContent> for DurationsError {
+    fn from(value: MissingContent) -> Self {
+        DurationsError::MissingContent(value)
+    }
+}
+
+pub async fn get_videos_durations(videos: &[Video]) -> Result<Vec<String>, DurationsError> {
+    let mut query = YOUTUBE
+        .get()
+        .unwrap()
+        .videos()
+        .list(&vec!["contentDetails".into()]);
+    for video in videos {
+        query = query.add_id(video.id.as_str());
+    }
+    let response = query
+        .max_results(50)
+        .param("key", KEY.get().unwrap())
+        .doit()
+        .await?;
+
+    let durations = match response.1.items {
+        Some(v) => {
+            if v.len() == videos.len() {
+                v.into_iter()
+                    .map(|v| {
+                        v.content_details
+                            .ok_or(MissingContent::ContentDetails)?
+                            .duration
+                            .ok_or(MissingContent::VideoDuration)
+                    })
+                    .collect::<Result<Vec<String>, MissingContent>>()?
+            } else {
+                return Err(DurationsError::LengthMismatch(v));
+            }
+        }
+        None => {
+            if videos.len() == 0 {
+                vec![]
+            } else {
+                return Err(DurationsError::Empty(response.0));
+            }
+        }
+    };
+
+    Ok(durations)
 }
