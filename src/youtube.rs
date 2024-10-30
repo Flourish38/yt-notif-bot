@@ -178,7 +178,12 @@ impl From<MissingContent> for DurationsError {
     }
 }
 
-pub async fn get_videos_durations(videos: &[Video]) -> Result<Vec<String>, DurationsError> {
+#[derive(Clone)]
+pub struct VideoExtras {
+    pub duration: String,
+}
+
+pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, DurationsError> {
     let mut query = YOUTUBE
         .get()
         .unwrap()
@@ -198,12 +203,15 @@ pub async fn get_videos_durations(videos: &[Video]) -> Result<Vec<String>, Durat
             if v.len() == videos.len() {
                 v.into_iter()
                     .map(|v| {
-                        v.content_details
-                            .ok_or(MissingContent::ContentDetails)?
-                            .duration
-                            .ok_or(MissingContent::VideoDuration)
+                        Ok(VideoExtras {
+                            duration: v
+                                .content_details
+                                .ok_or(MissingContent::ContentDetails)?
+                                .duration
+                                .ok_or(MissingContent::VideoDuration)?,
+                        })
                     })
-                    .collect::<Result<Vec<String>, MissingContent>>()?
+                    .collect::<Result<Vec<VideoExtras>, MissingContent>>()?
             } else {
                 return Err(DurationsError::LengthMismatch(v));
             }

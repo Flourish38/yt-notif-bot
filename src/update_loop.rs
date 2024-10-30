@@ -1,5 +1,7 @@
 use crate::db::{get_channels_to_send, get_playlists, update_most_recent};
-use crate::youtube::{get_uploads_from_playlist, get_videos_durations, UploadsError, Video};
+use crate::youtube::{
+    get_uploads_from_playlist, get_videos_extras, UploadsError, Video, VideoExtras,
+};
 use crate::TIME_PER_REQUEST;
 
 use std::collections::VecDeque;
@@ -18,7 +20,7 @@ struct IndexWorkunit<'a> {
 struct Workunit<'a> {
     playlist_id: &'a String,
     video: Video,
-    duration: String,
+    extras: VideoExtras,
     channel_id: ChannelId,
 }
 
@@ -72,25 +74,25 @@ async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp)
 
         let videos_slice = &videos[first_index..];
 
+        // sleep now
+        sleep(TIME_PER_REQUEST).await;
+
         if videos_slice.len() != 0 {
-            assign_workunit_duration(videos_slice, index_workunits, first_index, &http).await;
-        } else {
-            sleep(TIME_PER_REQUEST).await;
+            assign_workunit_extras(videos_slice, index_workunits, first_index, &http).await;
         }
     }
 }
 
-async fn assign_workunit_duration<'a>(
+async fn assign_workunit_extras<'a>(
     videos: &[Video],
     index_workunits: Vec<IndexWorkunit<'a>>,
     first_index: usize,
     http: &impl CacheHttp,
 ) {
-    sleep(TIME_PER_REQUEST).await; // sleep because we're making another api request, no getting rate-limited!
-    let durations = match get_videos_durations(videos).await {
+    let extras = match get_videos_extras(videos).await {
         Ok(v) => v,
         Err(e) => {
-            println!("get_videos_durations in assign_workunit_duration:\t{:?}", e);
+            println!("get_videos_extras in assign_workunit_duration:\t{:?}", e);
             sleep(TIME_PER_REQUEST).await;
             return;
         }
@@ -103,7 +105,7 @@ async fn assign_workunit_duration<'a>(
             Workunit {
                 playlist_id: iw.playlist_id,
                 video: videos[index].clone(),
-                duration: durations[index].clone(),
+                extras: extras[index].clone(),
                 channel_id: iw.channel_id,
             }
         })
@@ -128,6 +130,7 @@ async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
         Some(d) => d,
         None => {
             // There must be zero workunits, sleep to avoid requesting too quickly
+            // This should never happen, since we check for it earlier.
             sleep(TIME_PER_REQUEST).await;
             return;
         }
@@ -142,7 +145,7 @@ async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
                 CreateMessage::new()
                     .content(format!(
                         "https://youtu.be/{} `({})`",
-                        w.video.id, w.duration
+                        w.video.id, w.extras.duration
                     ))
                     .flags(MessageFlags::empty()),
             )
