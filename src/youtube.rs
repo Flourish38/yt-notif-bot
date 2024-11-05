@@ -159,22 +159,22 @@ pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, 
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum DurationsError {
+pub enum ExtrasError {
     YouTube3(google_youtube3::Error),
     MissingContent(MissingContent),
     Empty(Response<Body>),
     LengthMismatch(Vec<google_youtube3::api::Video>),
 }
 
-impl From<google_youtube3::Error> for DurationsError {
+impl From<google_youtube3::Error> for ExtrasError {
     fn from(value: google_youtube3::Error) -> Self {
-        DurationsError::YouTube3(value)
+        ExtrasError::YouTube3(value)
     }
 }
 
-impl From<MissingContent> for DurationsError {
+impl From<MissingContent> for ExtrasError {
     fn from(value: MissingContent) -> Self {
-        DurationsError::MissingContent(value)
+        ExtrasError::MissingContent(value)
     }
 }
 
@@ -183,7 +183,7 @@ pub struct VideoExtras {
     pub duration: String,
 }
 
-pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, DurationsError> {
+pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, ExtrasError> {
     let mut query = YOUTUBE
         .get()
         .unwrap()
@@ -198,7 +198,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Dur
         .doit()
         .await?;
 
-    let durations = match response.1.items {
+    match response.1.items {
         Some(v) => {
             if v.len() == videos.len() {
                 v.into_iter()
@@ -211,19 +211,17 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Dur
                                 .ok_or(MissingContent::VideoDuration)?,
                         })
                     })
-                    .collect::<Result<Vec<VideoExtras>, MissingContent>>()?
+                    .collect::<Result<Vec<VideoExtras>, ExtrasError>>()
             } else {
-                return Err(DurationsError::LengthMismatch(v));
+                return Err(ExtrasError::LengthMismatch(v));
             }
         }
         None => {
             if videos.len() == 0 {
-                vec![]
+                Ok(vec![])
             } else {
-                return Err(DurationsError::Empty(response.0));
+                Err(ExtrasError::Empty(response.0))
             }
         }
-    };
-
-    Ok(durations)
+    }
 }
