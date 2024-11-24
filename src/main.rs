@@ -6,6 +6,7 @@ mod commands;
 mod components;
 mod db;
 mod generate_components;
+mod rate_limit;
 mod update_loop;
 mod youtube;
 
@@ -25,7 +26,7 @@ use update_loop::update_loop;
 use std::env;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, OnceCell};
+use tokio::sync::{mpsc, Mutex, OnceCell};
 
 use serenity::all::{Context, EventHandler, GatewayIntents};
 use serenity::async_trait;
@@ -34,6 +35,8 @@ use serenity::model::gateway::Ready;
 use serenity::model::id::UserId;
 
 use config::{Config, ConfigError, File};
+
+use crate::rate_limit::RateLimiter;
 
 // Technically this initial vec is never used but it makes it so you don't need to use an expect() whenever you use the variable.
 // Also, according to the docs, vecs of size 0 don't allocate any memory anyways, so it literally doesn't matter.
@@ -52,7 +55,8 @@ static HYPER: OnceCell<hyper::Client<HttpsConnector<HttpConnector>>> = OnceCell:
 
 static KEY: OnceCell<Box<str>> = OnceCell::const_new();
 
-static YOUTUBE: OnceCell<YouTube<HttpsConnector<HttpConnector>>> = OnceCell::const_new();
+static YOUTUBE: OnceCell<Mutex<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>>> =
+    OnceCell::const_new();
 
 // 1 day / 10,000 (which is the rate limit)
 const TIME_PER_REQUEST: Duration = Duration::from_millis(
@@ -176,9 +180,10 @@ async fn main() -> Result<(), sqlx::Error> {
         .expect("Somehow a race condition for HYPER???");
 
     let youtube = YouTube::new(HYPER.get().unwrap().clone(), NoToken);
+    let rate_limited_youtube = Mutex::new(RateLimiter::new(TIME_PER_REQUEST, youtube));
 
     // Have to do this instead of .expect(...) because YouTube doesn't implement Debug...
-    match YOUTUBE.set(youtube) {
+    match YOUTUBE.set(rate_limited_youtube) {
         Err(_) => panic!("Somehow a race condition for YOUTUBE???"),
         _ => (),
     }

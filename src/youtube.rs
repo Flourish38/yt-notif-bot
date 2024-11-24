@@ -4,7 +4,7 @@ use crate::{HYPER, KEY, YOUTUBE};
 use google_youtube3::{
     api::PlaylistItemContentDetails,
     chrono::{DateTime, Utc},
-    hyper,
+    hyper::{self},
 };
 use hyper::{body, http::uri::InvalidUri, Body, Response, StatusCode};
 
@@ -85,6 +85,16 @@ pub async fn get_upload_playlist_id(
     }
 }
 
+macro_rules! get_youtube_lock {
+    () => {
+        YOUTUBE
+            .get()
+            .unwrap() // application is broken if YOUTUBE resource doesn't exist
+            .lock()
+            .await
+    };
+}
+
 #[derive(Debug)]
 pub enum MissingContent {
     ContentDetails,
@@ -132,9 +142,10 @@ impl TryFrom<PlaylistItemContentDetails> for Video {
 }
 
 pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, UploadsError> {
-    let response = YOUTUBE
-        .get()
-        .unwrap()
+    let mut lock = get_youtube_lock!();
+    let response = lock
+        .wait()
+        .await
         .playlist_items()
         .list(&vec!["contentDetails".into()])
         .playlist_id(playlist_id)
@@ -184,9 +195,10 @@ pub struct VideoExtras {
 }
 
 pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, ExtrasError> {
-    let mut query = YOUTUBE
-        .get()
-        .unwrap()
+    let mut lock = get_youtube_lock!();
+    let mut query = lock
+        .wait()
+        .await
         .videos()
         .list(&vec!["contentDetails".into()]);
     for video in videos {

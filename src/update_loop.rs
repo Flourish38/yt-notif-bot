@@ -2,14 +2,10 @@ use crate::db::{get_channels_to_send, get_playlists, update_most_recent};
 use crate::youtube::{
     get_uploads_from_playlist, get_videos_extras, UploadsError, Video, VideoExtras,
 };
-use crate::TIME_PER_REQUEST;
 
 use std::collections::VecDeque;
-use std::time::Duration;
 
 use serenity::all::{CacheHttp, ChannelId, CreateMessage, Message, MessageFlags};
-
-use tokio::time::sleep;
 
 struct IndexWorkunit<'a> {
     playlist_id: &'a String,
@@ -31,12 +27,10 @@ async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp)
 
             Err(UploadsError::MissingContent(mc)) => {
                 println!("get_uploads_from_playlist in process_playlists:\t{:?}", mc);
-                sleep(TIME_PER_REQUEST).await;
                 continue;
             }
             Err(UploadsError::YouTube3(e)) => {
                 println!("get_uploads_from_playlist in process_playlists:\t{}", e);
-                sleep(TIME_PER_REQUEST).await;
                 continue;
             }
         };
@@ -74,9 +68,6 @@ async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp)
 
         let videos_slice = &videos[first_index..];
 
-        // sleep now
-        sleep(TIME_PER_REQUEST).await;
-
         if videos_slice.len() != 0 {
             assign_workunit_extras(videos_slice, index_workunits, first_index, &http).await;
         }
@@ -93,7 +84,6 @@ async fn assign_workunit_extras<'a>(
         Ok(v) => v,
         Err(e) => {
             println!("get_videos_extras in assign_workunit_duration:\t{:?}", e);
-            sleep(TIME_PER_REQUEST).await;
             return;
         }
     };
@@ -114,28 +104,7 @@ async fn assign_workunit_extras<'a>(
     do_workunits(workunits, http).await
 }
 
-fn reduce_duration(duration: Duration, n: usize) -> Option<Duration> {
-    match n.try_into() {
-        Ok(v) => duration.checked_div(v),
-        Err(_) => {
-            println!("Insane amount of workunits!!! {}", n);
-            // if there are more than 2^32 workunits to get through... maybe sleeping isn't such a good idea.
-            Some(Duration::ZERO)
-        }
-    }
-}
-
 async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
-    let reduced_duration = match reduce_duration(TIME_PER_REQUEST, workunits.len()) {
-        Some(d) => d,
-        None => {
-            // There must be zero workunits, sleep to avoid requesting too quickly
-            // This should never happen, since we check for it earlier.
-            sleep(TIME_PER_REQUEST).await;
-            return;
-        }
-    };
-
     let mut db_retries = VecDeque::new();
     for w in workunits {
         let msg = match w
@@ -153,17 +122,15 @@ async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
         {
             Err(e) => {
                 println!("send_message in do_workunits:\t{}", e);
-                sleep(reduced_duration).await;
                 continue;
             }
             Ok(msg) => msg,
         };
 
         update_db_entry(&mut db_retries, w, msg, &http).await;
-        sleep(reduced_duration).await;
     }
 
-    resync_db(db_retries, reduced_duration).await
+    resync_db(db_retries).await
 }
 
 async fn update_db_entry<'a>(
@@ -189,7 +156,7 @@ async fn update_db_entry<'a>(
     }
 }
 
-async fn resync_db<'a>(mut db_retries: VecDeque<Workunit<'a>>, reduced_duration: Duration) {
+async fn resync_db<'a>(mut db_retries: VecDeque<Workunit<'a>>) {
     if db_retries.len() != 0 {
         println!("{} DB update failures to resolve", db_retries.len());
         let mut failure_count: usize = 0;
@@ -204,10 +171,9 @@ async fn resync_db<'a>(mut db_retries: VecDeque<Workunit<'a>>, reduced_duration:
                         failure_count += 1;
                         db_retries.push_back(w);
                     }
-                    // at least make an attempt not to throttle the entire system
-                    sleep(reduced_duration).await;
                 }
             }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await; // at least attempt not to throttle the system
         }
         println!(
             "All failures resolved after {} additional failures.",
@@ -225,13 +191,11 @@ pub async fn update_loop(http: impl CacheHttp) {
 
             Err(e) => {
                 println!("get_playlists in update_loop:\t{}", e);
-                sleep(TIME_PER_REQUEST).await;
                 continue;
             }
         };
 
         if playlists.len() == 0 {
-            sleep(TIME_PER_REQUEST).await;
             continue;
         }
 
