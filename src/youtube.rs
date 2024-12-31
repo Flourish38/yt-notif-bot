@@ -4,7 +4,7 @@ use crate::{HYPER, KEY, YOUTUBE};
 use google_youtube3::{
     api::PlaylistItemContentDetails,
     chrono::{DateTime, Utc},
-    hyper::{self},
+    hyper,
 };
 use hyper::{body, http::uri::InvalidUri, Body, Response, StatusCode};
 
@@ -85,16 +85,6 @@ pub async fn get_upload_playlist_id(
     }
 }
 
-macro_rules! get_youtube_lock {
-    () => {
-        YOUTUBE
-            .get()
-            .unwrap() // application is broken if YOUTUBE resource doesn't exist
-            .lock()
-            .await
-    };
-}
-
 #[derive(Debug)]
 pub enum MissingContent {
     ContentDetails,
@@ -142,16 +132,18 @@ impl TryFrom<PlaylistItemContentDetails> for Video {
 }
 
 pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, UploadsError> {
-    let mut lock = get_youtube_lock!();
-    let response = lock
-        .wait()
-        .await
-        .playlist_items()
-        .list(&vec!["contentDetails".into()])
-        .playlist_id(playlist_id)
-        .max_results(50)
-        .param("key", KEY.get().unwrap())
-        .doit()
+    let response = YOUTUBE
+        .get()
+        .unwrap()
+        .use_with(|yt| async move {
+            yt.playlist_items()
+                .list(&vec!["contentDetails".into()])
+                .playlist_id(playlist_id)
+                .max_results(50)
+                .param("key", KEY.get().unwrap())
+                .doit()
+                .await
+        })
         .await?
         .1;
 
@@ -195,19 +187,20 @@ pub struct VideoExtras {
 }
 
 pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, ExtrasError> {
-    let mut lock = get_youtube_lock!();
-    let mut query = lock
-        .wait()
-        .await
-        .videos()
-        .list(&vec!["contentDetails".into()]);
-    for video in videos {
-        query = query.add_id(video.id.as_str());
-    }
-    let response = query
-        .max_results(50)
-        .param("key", KEY.get().unwrap())
-        .doit()
+    let response = YOUTUBE
+        .get()
+        .unwrap()
+        .use_with(|yt| async move {
+            let mut query = yt.videos().list(&vec!["contentDetails".into()]);
+            for video in videos {
+                query = query.add_id(video.id.as_str());
+            }
+            query
+                .max_results(50)
+                .param("key", KEY.get().unwrap())
+                .doit()
+                .await
+        })
         .await?;
 
     match response.1.items {

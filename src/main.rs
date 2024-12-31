@@ -26,7 +26,7 @@ use update_loop::update_loop;
 use std::env;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, Mutex, OnceCell};
+use tokio::sync::{mpsc, OnceCell};
 
 use serenity::all::{Context, EventHandler, GatewayIntents};
 use serenity::async_trait;
@@ -55,7 +55,7 @@ static HYPER: OnceCell<hyper::Client<HttpsConnector<HttpConnector>>> = OnceCell:
 
 static KEY: OnceCell<Box<str>> = OnceCell::const_new();
 
-static YOUTUBE: OnceCell<Mutex<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>>> =
+static YOUTUBE: OnceCell<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>> =
     OnceCell::const_new();
 
 // 1 day / 10,000 (which is the rate limit)
@@ -180,7 +180,7 @@ async fn main() -> Result<(), sqlx::Error> {
         .expect("Somehow a race condition for HYPER???");
 
     let youtube = YouTube::new(HYPER.get().unwrap().clone(), NoToken);
-    let rate_limited_youtube = Mutex::new(RateLimiter::new(TIME_PER_REQUEST, youtube));
+    let rate_limited_youtube = RateLimiter::new(TIME_PER_REQUEST, youtube);
 
     // Have to do this instead of .expect(...) because YouTube doesn't implement Debug...
     match YOUTUBE.set(rate_limited_youtube) {
