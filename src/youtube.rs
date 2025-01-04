@@ -91,6 +91,9 @@ pub enum MissingContent {
     VideoId,
     VideoPublishedAt,
     VideoDuration,
+    Snippet,
+    CategoryId,
+    Tags,
 }
 
 #[derive(Debug)]
@@ -184,6 +187,9 @@ impl From<MissingContent> for ExtrasError {
 #[derive(Clone)]
 pub struct VideoExtras {
     pub duration: String,
+    pub category_id: String,
+    pub tags: Vec<String>,
+    pub live_streaming_details_exists: bool,
 }
 
 pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, ExtrasError> {
@@ -191,7 +197,11 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
         .get()
         .unwrap()
         .use_with(|yt| async move {
-            let mut query = yt.videos().list(&vec!["contentDetails".into()]);
+            let mut query = yt.videos().list(&vec![
+                "contentDetails".into(),
+                "snippet".into(),
+                "liveStreamingDetails".into(),
+            ]);
             for video in videos {
                 query = query.add_id(video.id.as_str());
             }
@@ -208,12 +218,16 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
             if v.len() == videos.len() {
                 v.into_iter()
                     .map(|v| {
+                        let content_details =
+                            v.content_details.ok_or(MissingContent::ContentDetails)?;
+                        let snippet = v.snippet.ok_or(MissingContent::Snippet)?;
                         Ok(VideoExtras {
-                            duration: v
-                                .content_details
-                                .ok_or(MissingContent::ContentDetails)?
+                            duration: content_details
                                 .duration
                                 .ok_or(MissingContent::VideoDuration)?,
+                            category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
+                            tags: snippet.tags.ok_or(MissingContent::Tags)?,
+                            live_streaming_details_exists: v.live_streaming_details.is_some(),
                         })
                     })
                     .collect::<Result<Vec<VideoExtras>, ExtrasError>>()

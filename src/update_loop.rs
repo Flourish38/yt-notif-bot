@@ -20,6 +20,30 @@ struct Workunit<'a> {
     channel_id: ChannelId,
 }
 
+impl<'a> Workunit<'a> {
+    async fn send_message(&self, http: impl CacheHttp) -> Result<Message, serenity::Error> {
+        let msg_text = format!(
+            "https://youtu.be/{} {} `({})`\n```\ncategoryId: {}\ntags: [{}]\n```",
+            self.video.id,
+            match self.extras.live_streaming_details_exists {
+                true => '🔴',
+                false => '⭕',
+            },
+            self.extras.duration,
+            self.extras.category_id,
+            self.extras.tags.join(",")
+        );
+        self.channel_id
+            .send_message(
+                &http,
+                CreateMessage::new()
+                    .content(msg_text)
+                    .flags(MessageFlags::empty()),
+            )
+            .await
+    }
+}
+
 async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp) -> () {
     for playlist_id in playlists.iter() {
         let mut videos = match get_uploads_from_playlist(&playlist_id).await {
@@ -107,19 +131,7 @@ async fn assign_workunit_extras<'a>(
 async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
     let mut db_retries = VecDeque::new();
     for w in workunits {
-        let msg = match w
-            .channel_id
-            .send_message(
-                &http,
-                CreateMessage::new()
-                    .content(format!(
-                        "https://youtu.be/{} `({})`",
-                        w.video.id, w.extras.duration
-                    ))
-                    .flags(MessageFlags::empty()),
-            )
-            .await
-        {
+        let msg = match w.send_message(&http).await {
             Err(e) => {
                 println!("send_message in do_workunits:\t{}", e);
                 continue;
