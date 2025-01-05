@@ -21,14 +21,13 @@ struct Workunit<'a> {
 }
 
 impl<'a> Workunit<'a> {
-    async fn send_message(&self, http: impl CacheHttp) -> Result<Message, serenity::Error> {
+    async fn send_message(&self, http: impl CacheHttp) -> Result<Option<Message>, serenity::Error> {
+        if self.extras.live_streaming_details_exists {
+            return Ok(None);
+        }
         let msg_text = format!(
-            "https://youtu.be/{} {} `({})`\n```\ncategoryId: {}\ntags: [{}]\n```",
+            "https://youtu.be/{} `({})`\n```\ncategoryId: {}\ntags: [{}]\n```",
             self.video.id,
-            match self.extras.live_streaming_details_exists {
-                true => '🔴',
-                false => '⭕',
-            },
             self.extras.duration,
             self.extras.category_id,
             self.extras.tags.join(",")
@@ -41,6 +40,7 @@ impl<'a> Workunit<'a> {
                     .flags(MessageFlags::empty()),
             )
             .await
+            .map(Some)
     }
 }
 
@@ -148,50 +148,64 @@ async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
 async fn update_db_entry<'a>(
     db_retries: &mut VecDeque<Workunit<'a>>,
     w: Workunit<'a>,
-    msg: Message,
+    o_msg: Option<Message>,
     http: impl CacheHttp,
 ) {
-    if let Err(e) = update_most_recent(w.playlist_id, &w.channel_id, &w.video.published_at).await {
-        println!(
-            "update_most_recent in update_db_entry:\t{}\n
-            Attempting to delete message to regain consistency...",
-            e
-        );
-        if let Err(e) = msg.delete(http).await {
-            println!(
-                "msg.delete in update_db_entry:\t{}\n
-                Uh oh. Adding to queue to be reprocessed later.",
-                e
-            );
-            db_retries.push_back(w);
-        }
-    }
+    let Err(e1) = update_most_recent(w.playlist_id, &w.channel_id, &w.video.published_at).await
+    else {
+        return;
+    };
+
+    println!("update_most_recent in update_db_entry:\t{}", e1);
+    let Some(msg) = o_msg else {
+        return; // No message that could be mistakenly sent twice, so no big deal
+    };
+
+    println!("Attempting to delete message to restore consistency...");
+    let Err(e2) = msg.delete(http).await else {
+        return; // Message deleted successfully, consistency restored
+    };
+
+    println!(
+        "msg.delete in update_db_entry:\t{}\nUh oh. Adding to queue to be reprocessed later.",
+        e2
+    );
+    db_retries.push_back(w);
 }
 
+// This function is a brute force way of making sure that the same message doesn't get sent twice.
+// This blocks the entire update loop until the database is back in sync.
+//
+// The only way that this function should ever possibly be called with a non-empty queue is if
+//     1. The database fails to write (should be almost impossible, given that sqlite is a local file system)
+// AND 2. Connection is somehow lost with discord immediately after successfully sending the message, preventing it from being deleted.
+//
+// It'd better not.
 async fn resync_db<'a>(mut db_retries: VecDeque<Workunit<'a>>) {
-    if db_retries.len() != 0 {
-        println!("{} DB update failures to resolve", db_retries.len());
-        let mut failure_count: usize = 0;
-        loop {
-            match db_retries.pop_front() {
-                None => break,
-                Some(w) => {
-                    if let Err(_) =
-                        update_most_recent(w.playlist_id, &w.channel_id, &w.video.published_at)
-                            .await
-                    {
-                        failure_count += 1;
-                        db_retries.push_back(w);
-                    }
-                }
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await; // at least attempt not to throttle the system
-        }
-        println!(
-            "All failures resolved after {} additional failures.",
-            failure_count
-        );
+    if db_retries.len() == 0 {
+        return;
     }
+
+    println!("{} DB update failures to resolve", db_retries.len());
+    let mut failure_count: usize = 0;
+    loop {
+        let Some(w) = db_retries.pop_front() else {
+            break; // No workunits left, thank goodness!
+        };
+
+        if let Err(_) =
+            update_most_recent(w.playlist_id, &w.channel_id, &w.video.published_at).await
+        {
+            failure_count += 1;
+            db_retries.push_back(w);
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await; // at least attempt not to throttle the system
+    }
+    println!(
+        "All failures resolved after {} additional failures.",
+        failure_count
+    );
 }
 
 // This function is ugly, but not terribly complicated.
