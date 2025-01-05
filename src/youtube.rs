@@ -192,6 +192,10 @@ pub struct VideoExtras {
 }
 
 pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, ExtrasError> {
+    if videos.len() == 0 {
+        return Ok(vec![]);
+    }
+
     let response = YOUTUBE
         .get()
         .unwrap()
@@ -212,34 +216,27 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
         })
         .await?;
 
-    match response.1.items {
-        Some(v) => {
-            if v.len() == videos.len() {
-                v.into_iter()
-                    .map(|v| {
-                        let content_details =
-                            v.content_details.ok_or(MissingContent::ContentDetails)?;
-                        let snippet = v.snippet.ok_or(MissingContent::Snippet)?;
-                        Ok(VideoExtras {
-                            duration: content_details
-                                .duration
-                                .ok_or(MissingContent::VideoDuration)?,
-                            category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
-                            tags: snippet.tags.unwrap_or_default(),
-                            live_streaming_details_exists: v.live_streaming_details.is_some(),
-                        })
-                    })
-                    .collect::<Result<Vec<VideoExtras>, ExtrasError>>()
-            } else {
-                return Err(ExtrasError::LengthMismatch(v));
-            }
-        }
-        None => {
-            if videos.len() == 0 {
-                Ok(vec![])
-            } else {
-                Err(ExtrasError::Empty(response.0))
-            }
-        }
+    let Some(v) = response.1.items else {
+        return Err(ExtrasError::Empty(response.0));
+    };
+
+    if v.len() != videos.len() {
+        return Err(ExtrasError::LengthMismatch(v));
     }
+
+    v.into_iter()
+        .map(|v| {
+            let content_details = v.content_details.ok_or(MissingContent::ContentDetails)?;
+            let snippet = v.snippet.ok_or(MissingContent::Snippet)?;
+
+            Ok(VideoExtras {
+                duration: content_details
+                    .duration
+                    .ok_or(MissingContent::VideoDuration)?,
+                category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
+                tags: snippet.tags.unwrap_or_default(),
+                live_streaming_details_exists: v.live_streaming_details.is_some(),
+            })
+        })
+        .collect::<Result<Vec<VideoExtras>, ExtrasError>>()
 }
