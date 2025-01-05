@@ -93,7 +93,6 @@ pub enum MissingContent {
     VideoDuration,
     Snippet,
     CategoryId,
-    Tags,
 }
 
 #[derive(Debug)]
@@ -226,7 +225,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                                 .duration
                                 .ok_or(MissingContent::VideoDuration)?,
                             category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
-                            tags: snippet.tags.ok_or(MissingContent::Tags)?,
+                            tags: snippet.tags.unwrap_or_default(),
                             live_streaming_details_exists: v.live_streaming_details.is_some(),
                         })
                     })
