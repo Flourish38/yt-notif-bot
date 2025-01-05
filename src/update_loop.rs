@@ -1,6 +1,7 @@
 use crate::db::{get_channels_to_send, get_playlists, update_most_recent};
 use crate::youtube::{
-    get_uploads_from_playlist, get_videos_extras, UploadsError, Video, VideoExtras,
+    get_uploads_from_playlist, get_videos_extras, LiveStreamDetails, UploadsError, Video,
+    VideoExtras,
 };
 
 use std::collections::VecDeque;
@@ -22,12 +23,19 @@ struct Workunit<'a> {
 
 impl<'a> Workunit<'a> {
     async fn send_message(&self, http: impl CacheHttp) -> Result<Option<Message>, serenity::Error> {
-        if self.extras.live_streaming_details_exists {
+        if !matches!(self.extras.live_stream_details, LiveStreamDetails::Uploaded) {
             return Ok(None);
         }
+
         let msg_text = format!(
-            "https://youtu.be/{} `({})`\n```\ncategoryId: {}\ntags: [{}]\n```",
+            "https://youtu.be/{} {}`({})`\n```\ncategoryId: {}\ntags: [{}]\n```",
             self.video.id,
+            match self.extras.live_stream_details {
+                // Currently, this does nothing.
+                LiveStreamDetails::Live => "🔴 ",
+                LiveStreamDetails::VOD => "⭕ ",
+                LiveStreamDetails::Uploaded => "",
+            },
             self.extras.duration,
             self.extras.category_id,
             self.extras.tags.join(",")

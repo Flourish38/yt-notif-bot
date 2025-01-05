@@ -184,11 +184,18 @@ impl From<MissingContent> for ExtrasError {
 }
 
 #[derive(Clone)]
+pub enum LiveStreamDetails {
+    Live,
+    VOD,
+    Uploaded,
+}
+
+#[derive(Clone)]
 pub struct VideoExtras {
     pub duration: String,
     pub category_id: String,
     pub tags: Vec<String>,
-    pub live_streaming_details_exists: bool,
+    pub live_stream_details: LiveStreamDetails,
 }
 
 pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, ExtrasError> {
@@ -235,7 +242,13 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                     .ok_or(MissingContent::VideoDuration)?,
                 category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
                 tags: snippet.tags.unwrap_or_default(),
-                live_streaming_details_exists: v.live_streaming_details.is_some(),
+                live_stream_details: match v.live_streaming_details {
+                    Some(lsd) => match lsd.actual_end_time {
+                        Some(_) => LiveStreamDetails::VOD,
+                        None => LiveStreamDetails::Live,
+                    },
+                    None => LiveStreamDetails::Uploaded,
+                },
             })
         })
         .collect::<Result<Vec<VideoExtras>, ExtrasError>>()
