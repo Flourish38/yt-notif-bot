@@ -28,7 +28,11 @@ impl<'a> Workunit<'a> {
         }
 
         let msg_text = format!(
-            "https://youtu.be/{} {}`({})`\n```\ncategoryId: {}\ntags: [{}]\n```",
+            "{} https://youtu.be/{} {}`({})`\n```\ncategoryId: {}\ntags: [{}]\n```",
+            match self.extras.is_short {
+                true => '📱',
+                false => '📺',
+            },
             self.video.id,
             match self.extras.live_stream_details {
                 // Currently, this does nothing.

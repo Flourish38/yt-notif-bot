@@ -164,11 +164,44 @@ pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, 
 
 #[derive(Debug)]
 #[allow(dead_code)]
+pub enum ShortsError {
+    Hyper(hyper::Error),
+    UriParseError(InvalidUri),
+    BadStatus(StatusCode),
+}
+
+impl From<InvalidUri> for ShortsError {
+    fn from(value: InvalidUri) -> Self {
+        Self::UriParseError(value)
+    }
+}
+
+impl From<hyper::Error> for ShortsError {
+    fn from(value: hyper::Error) -> Self {
+        Self::Hyper(value)
+    }
+}
+
+pub async fn is_short(id: &str) -> Result<bool, ShortsError> {
+    let uri = format!("https://www.youtube.com/shorts/{}", id).try_into()?;
+
+    let response = HYPER.get().unwrap().get(uri).await?;
+
+    match response.status() {
+        StatusCode::SEE_OTHER => Ok(false), // 303
+        StatusCode::OK => Ok(true),         // 200
+        s => Err(ShortsError::BadStatus(s)),
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
 pub enum ExtrasError {
     YouTube3(google_youtube3::Error),
     MissingContent(MissingContent),
     Empty(Response<Body>),
     LengthMismatch(Vec<google_youtube3::api::Video>),
+    ShortsError(ShortsError),
 }
 
 impl From<google_youtube3::Error> for ExtrasError {
@@ -180,6 +213,12 @@ impl From<google_youtube3::Error> for ExtrasError {
 impl From<MissingContent> for ExtrasError {
     fn from(value: MissingContent) -> Self {
         ExtrasError::MissingContent(value)
+    }
+}
+
+impl From<ShortsError> for ExtrasError {
+    fn from(value: ShortsError) -> Self {
+        Self::ShortsError(value)
     }
 }
 
@@ -196,6 +235,7 @@ pub struct VideoExtras {
     pub category_id: String,
     pub tags: Vec<String>,
     pub live_stream_details: LiveStreamDetails,
+    pub is_short: bool,
 }
 
 pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, ExtrasError> {
@@ -231,25 +271,27 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
         return Err(ExtrasError::LengthMismatch(v));
     }
 
-    v.into_iter()
-        .map(|v| {
-            let content_details = v.content_details.ok_or(MissingContent::ContentDetails)?;
-            let snippet = v.snippet.ok_or(MissingContent::Snippet)?;
+    // random exactly-what-I-was-looking-for function that happens to be re-exported, we take those
+    // found it from https://stackoverflow.com/a/68344457
+    serenity::futures::future::try_join_all(v.into_iter().map(|v| async {
+        let content_details = v.content_details.ok_or(MissingContent::ContentDetails)?;
+        let snippet = v.snippet.ok_or(MissingContent::Snippet)?;
 
-            Ok(VideoExtras {
-                duration: content_details
-                    .duration
-                    .ok_or(MissingContent::VideoDuration)?,
-                category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
-                tags: snippet.tags.unwrap_or_default(),
-                live_stream_details: match v.live_streaming_details {
-                    Some(lsd) => match lsd.actual_end_time {
-                        Some(_) => LiveStreamDetails::VOD,
-                        None => LiveStreamDetails::Live,
-                    },
-                    None => LiveStreamDetails::Uploaded,
+        Ok(VideoExtras {
+            duration: content_details
+                .duration
+                .ok_or(MissingContent::VideoDuration)?,
+            category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
+            tags: snippet.tags.unwrap_or_default(),
+            live_stream_details: match v.live_streaming_details {
+                Some(lsd) => match lsd.actual_end_time {
+                    Some(_) => LiveStreamDetails::VOD,
+                    None => LiveStreamDetails::Live,
                 },
-            })
+                None => LiveStreamDetails::Uploaded,
+            },
+            is_short: is_short(v.id.ok_or(MissingContent::VideoId)?.as_str()).await?,
         })
-        .collect::<Result<Vec<VideoExtras>, ExtrasError>>()
+    }))
+    .await
 }
