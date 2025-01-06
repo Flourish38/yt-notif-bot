@@ -134,7 +134,7 @@ pub async fn update_db_schema() -> Result<(), sqlx::Error> {
                 ALTER TABLE channels
                 ADD COLUMN vod_allowed INTEGER NOT NULL CHECK (vod_allowed IN (0, 1)) DEFAULT FALSE;
                 ALTER TABLE channels
-                ADD COLUMN short_allowed INTEGER NOT NULL CHECK (short_allowed IN (0, 1)) DEFAULT TRUE;
+                ADD COLUMN shorts_allowed INTEGER NOT NULL CHECK (shorts_allowed IN (0, 1)) DEFAULT TRUE;
                 PRAGMA user_version = 1;",
                 )
                 .execute(db)
@@ -156,7 +156,7 @@ pub async fn update_db_schema() -> Result<(), sqlx::Error> {
 pub struct Filters {
     pub live_allowed: bool,
     pub vod_allowed: bool,
-    pub short_allowed: bool,
+    pub shorts_allowed: bool,
 }
 
 pub async fn get_filters(
@@ -164,7 +164,7 @@ pub async fn get_filters(
     channel_id: &ChannelId,
 ) -> Result<Filters, sqlx::Error> {
     let row = query(
-        "SELECT live_allowed, vod_allowed, short_allowed
+        "SELECT live_allowed, vod_allowed, shorts_allowed
         FROM channels
         WHERE playlist_id == $1
         AND channel_id == $2",
@@ -177,6 +177,6 @@ pub async fn get_filters(
     Ok(Filters {
         live_allowed: row.try_get(0)?,
         vod_allowed: row.try_get(1)?,
-        short_allowed: row.try_get(2)?,
+        shorts_allowed: row.try_get(2)?,
     })
 }

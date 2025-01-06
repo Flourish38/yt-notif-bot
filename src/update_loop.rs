@@ -47,7 +47,7 @@ impl<'a> Workunit<'a> {
     ) -> Result<Option<Message>, SendMessageError> {
         let filters = get_filters(self.playlist_id, &self.channel_id).await?;
 
-        if (self.extras.is_short && !filters.short_allowed)
+        if (self.extras.is_short && !filters.shorts_allowed)
             || (matches!(self.extras.live_stream_details, LiveStreamDetails::Live)
                 && !filters.live_allowed)
             || (matches!(self.extras.live_stream_details, LiveStreamDetails::VOD)
