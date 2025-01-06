@@ -111,30 +111,46 @@ pub async fn delete_channel(
     .await
 }
 
-pub async fn update_db_schema() -> Result<Option<SqliteQueryResult>, sqlx::Error> {
+const CURRENT_VERSION: i32 = 1;
+pub async fn update_db_schema() -> Result<(), sqlx::Error> {
     let db = DB.get().unwrap();
 
-    let user_version: i32 = query("PRAGMA user_version")
+    let mut user_version: i32 = query("PRAGMA user_version")
         .fetch_one(db)
         .await?
         .try_get(0)?;
 
-    match user_version {
-        0 => query(
-            "ALTER TABLE channels
-            ADD COLUMN live_allowed INTEGER NOT NULL CHECK (live_allowed IN (0, 1)) DEFAULT FALSE;
-            ALTER TABLE channels
-            ADD COLUMN vod_allowed INTEGER NOT NULL CHECK (vod_allowed IN (0, 1)) DEFAULT FALSE;
-            ALTER TABLE channels
-            ADD COLUMN short_allowed INTEGER NOT NULL CHECK (short_allowed IN (0, 1)) DEFAULT TRUE;
-            PRAGMA user_version = 1;",
-        )
-        .execute(db)
-        .await
-        .map(Some),
-        1 => Ok(None),
-        n => panic!("Unknown user_version: {}", n),
+    if user_version != CURRENT_VERSION {
+        println!("Updating database from user_version {}.", user_version);
     }
+
+    while user_version != CURRENT_VERSION {
+        let result = match user_version {
+            CURRENT_VERSION => unreachable!(),
+            0 => {
+                let result = query(
+                "ALTER TABLE channels
+                ADD COLUMN live_allowed INTEGER NOT NULL CHECK (live_allowed IN (0, 1)) DEFAULT FALSE;
+                ALTER TABLE channels
+                ADD COLUMN vod_allowed INTEGER NOT NULL CHECK (vod_allowed IN (0, 1)) DEFAULT FALSE;
+                ALTER TABLE channels
+                ADD COLUMN short_allowed INTEGER NOT NULL CHECK (short_allowed IN (0, 1)) DEFAULT TRUE;
+                PRAGMA user_version = 1;",
+                )
+                .execute(db)
+                .await?;
+                user_version = 1;
+                result
+            }
+            n => panic!("Unknown user_version: {}", n),
+        };
+        println!(
+            "Affected {} rows updating to user_version {}.",
+            result.rows_affected(),
+            user_version
+        );
+    }
+    Ok(())
 }
 
 pub struct Filters {

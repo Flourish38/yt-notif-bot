@@ -114,6 +114,7 @@ fn build_config() -> Result<Config, ConfigError> {
 async fn main() -> Result<(), sqlx::Error> {
     // based on https://tms-dev-blog.com/rust-sqlx-basics-with-sqlite/#Creating_an_SQLite_database, accessed 2024-08-20.
     if !Sqlite::database_exists(DB_URL).await? {
+        println!("Creating DB files.");
         Sqlite::create_database(DB_URL).await?;
         let db = SqlitePool::connect(DB_URL).await?;
         query(
