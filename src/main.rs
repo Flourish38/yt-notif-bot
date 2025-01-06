@@ -13,6 +13,7 @@ mod youtube;
 use commands::*;
 use components::*;
 
+use db::update_db_schema;
 use google_youtube3::client::NoToken;
 use google_youtube3::{hyper, hyper_rustls, YouTube};
 
@@ -130,6 +131,8 @@ async fn main() -> Result<(), sqlx::Error> {
         DB.set(SqlitePool::connect(DB_URL).await?)
     }
     .expect("Somehow a race condition for DB???");
+
+    update_db_schema().await?;
 
     // Configure the client with your Discord bot token in your `config` file.
     let config = build_config().expect("Config failed");
