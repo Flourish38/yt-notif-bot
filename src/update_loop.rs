@@ -1,4 +1,4 @@
-use crate::db::{get_channels_to_send, get_playlists, update_most_recent};
+use crate::db::{get_channels_to_send, get_filters, get_playlists, update_most_recent};
 use crate::youtube::{
     get_uploads_from_playlist, get_videos_extras, LiveStreamDetails, UploadsError, Video,
     VideoExtras,
@@ -9,21 +9,50 @@ use std::collections::VecDeque;
 use serenity::all::{CacheHttp, ChannelId, CreateMessage, Message, MessageFlags};
 
 struct IndexWorkunit<'a> {
-    playlist_id: &'a String,
+    playlist_id: &'a str,
     index: usize,
     channel_id: ChannelId,
 }
 
 struct Workunit<'a> {
-    playlist_id: &'a String,
+    playlist_id: &'a str,
     video: Video,
     extras: VideoExtras,
     channel_id: ChannelId,
 }
 
+#[derive(Debug)]
+#[allow(dead_code)]
+enum SendMessageError {
+    Serenity(serenity::Error),
+    Sqlx(sqlx::Error),
+}
+
+impl From<serenity::Error> for SendMessageError {
+    fn from(value: serenity::Error) -> Self {
+        Self::Serenity(value)
+    }
+}
+
+impl From<sqlx::Error> for SendMessageError {
+    fn from(value: sqlx::Error) -> Self {
+        Self::Sqlx(value)
+    }
+}
+
 impl<'a> Workunit<'a> {
-    async fn send_message(&self, http: impl CacheHttp) -> Result<Option<Message>, serenity::Error> {
-        if !matches!(self.extras.live_stream_details, LiveStreamDetails::Uploaded) {
+    async fn send_message(
+        &self,
+        http: impl CacheHttp,
+    ) -> Result<Option<Message>, SendMessageError> {
+        let filters = get_filters(self.playlist_id, &self.channel_id).await?;
+
+        if (self.extras.is_short && !filters.short_allowed)
+            || (matches!(self.extras.live_stream_details, LiveStreamDetails::Live)
+                && !filters.live_allowed)
+            || (matches!(self.extras.live_stream_details, LiveStreamDetails::VOD)
+                && !filters.vod_allowed)
+        {
             return Ok(None);
         }
 
@@ -53,6 +82,7 @@ impl<'a> Workunit<'a> {
             )
             .await
             .map(Some)
+            .map_err(Into::into)
     }
 }
 
@@ -145,7 +175,7 @@ async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
     for w in workunits {
         let msg = match w.send_message(&http).await {
             Err(e) => {
-                println!("send_message in do_workunits:\t{}", e);
+                println!("send_message in do_workunits:\t{:?}", e);
                 continue;
             }
             Ok(msg) => msg,

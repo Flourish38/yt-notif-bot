@@ -79,7 +79,7 @@ pub async fn get_channels_to_send(
 }
 
 pub async fn update_most_recent(
-    playlist_id: &String,
+    playlist_id: &str,
     channel_id: &ChannelId,
     new_value: &DateTime<Utc>,
 ) -> Result<SqliteQueryResult, sqlx::Error> {
@@ -135,4 +135,32 @@ pub async fn update_db_schema() -> Result<Option<SqliteQueryResult>, sqlx::Error
         1 => Ok(None),
         n => panic!("Unknown user_version: {}", n),
     }
+}
+
+pub struct Filters {
+    pub live_allowed: bool,
+    pub vod_allowed: bool,
+    pub short_allowed: bool,
+}
+
+pub async fn get_filters(
+    playlist_id: &str,
+    channel_id: &ChannelId,
+) -> Result<Filters, sqlx::Error> {
+    let row = query(
+        "SELECT live_allowed, vod_allowed, short_allowed
+        FROM channels
+        WHERE playlist_id == $1
+        AND channel_id == $2",
+    )
+    .bind(playlist_id)
+    .bind(channel_id.get() as i64)
+    .fetch_one(DB.get().unwrap())
+    .await?;
+
+    Ok(Filters {
+        live_allowed: row.try_get(0)?,
+        vod_allowed: row.try_get(1)?,
+        short_allowed: row.try_get(2)?,
+    })
 }
