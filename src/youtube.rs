@@ -317,7 +317,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                             Some(FormattedTimestampStyle::RelativeTime),
                         )
                         .to_string(),
-                        (None, None, None) => unreachable!(),
+                        (None, None, None) => return Err(MissingContent::LiveStreamDetails)?,
                     },
                     lsd.scheduled_start_time.is_some(),
                 )
