@@ -49,9 +49,11 @@ impl<'a> Workunit<'a> {
 
         if (self.extras.is_short && !filters.shorts_allowed)
             || (matches!(self.extras.live_stream_details, LiveStreamDetails::Live)
-                && !filters.live_allowed)
+                && !filters.live_allowed
+                && !self.extras.is_scheduled)
             || (matches!(self.extras.live_stream_details, LiveStreamDetails::VOD)
-                && !filters.vod_allowed)
+                && !filters.vod_allowed
+                && !self.extras.is_scheduled)
         {
             return Ok(None);
         }
@@ -64,12 +66,12 @@ impl<'a> Workunit<'a> {
             },
             self.video.id,
             match self.extras.live_stream_details {
-                // Currently, this does nothing.
+                LiveStreamDetails::Upcoming => "⏱️ ",
                 LiveStreamDetails::Live => "🔴 ",
                 LiveStreamDetails::VOD => "⭕ ",
                 LiveStreamDetails::Uploaded => "",
             },
-            self.extras.duration,
+            self.extras.time_string,
             self.extras.category_id,
             self.extras.tags.join(",")
         );

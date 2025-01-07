@@ -7,6 +7,7 @@ use google_youtube3::{
     hyper,
 };
 use hyper::{body, http::uri::InvalidUri, Body, Response, StatusCode};
+use serenity::all::{FormattedTimestamp, FormattedTimestampStyle};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -93,6 +94,7 @@ pub enum MissingContent {
     VideoDuration,
     Snippet,
     CategoryId,
+    LiveStreamDetails,
 }
 
 #[derive(Debug)]
@@ -227,15 +229,17 @@ pub enum LiveStreamDetails {
     Live,
     VOD,
     Uploaded,
+    Upcoming,
 }
 
 #[derive(Clone)]
 pub struct VideoExtras {
-    pub duration: String,
+    pub time_string: String,
     pub category_id: String,
     pub tags: Vec<String>,
     pub live_stream_details: LiveStreamDetails,
     pub is_short: bool,
+    pub is_scheduled: bool,
 }
 
 pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, ExtrasError> {
@@ -274,23 +278,60 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
     // random exactly-what-I-was-looking-for function that happens to be re-exported, we take those
     // found it from https://stackoverflow.com/a/68344457
     serenity::futures::future::try_join_all(v.into_iter().map(|v| async {
-        let content_details = v.content_details.ok_or(MissingContent::ContentDetails)?;
         let snippet = v.snippet.ok_or(MissingContent::Snippet)?;
+        let duration = match v
+            .content_details
+            .ok_or(MissingContent::ContentDetails)
+            .map(|cd| cd.duration)
+            .transpose()
+        {
+            Some(r) => r,
+            None => Err(MissingContent::VideoDuration),
+        };
+        // nightmare
+        let (live_stream_details, time_string, is_scheduled) =
+            if let Some(lsd) = v.live_streaming_details {
+                (
+                    match (
+                        lsd.scheduled_start_time,
+                        lsd.actual_start_time,
+                        lsd.actual_end_time,
+                    ) {
+                        (Some(_), None, None) => LiveStreamDetails::Upcoming,
+                        (_, Some(_), None) => LiveStreamDetails::Live,
+                        (_, Some(_), Some(_)) => LiveStreamDetails::VOD,
+                        (_, None, Some(_)) | (None, None, None) => {
+                            // surely that must be a mistake
+                            return Err(MissingContent::LiveStreamDetails)?;
+                        }
+                    },
+                    match (
+                        lsd.scheduled_start_time,
+                        lsd.actual_start_time,
+                        lsd.actual_end_time,
+                    ) {
+                        (_, _, Some(_)) => duration?,
+                        // cool that it lets me combine these like this
+                        (Some(dt), None, None) | (_, Some(dt), None) => FormattedTimestamp::new(
+                            dt.into(),
+                            Some(FormattedTimestampStyle::RelativeTime),
+                        )
+                        .to_string(),
+                        (None, None, None) => unreachable!(),
+                    },
+                    lsd.scheduled_start_time.is_some(),
+                )
+            } else {
+                (LiveStreamDetails::Uploaded, duration?, false)
+            };
 
         Ok(VideoExtras {
-            duration: content_details
-                .duration
-                .ok_or(MissingContent::VideoDuration)?,
+            time_string: time_string,
             category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
             tags: snippet.tags.unwrap_or_default(),
-            live_stream_details: match v.live_streaming_details {
-                Some(lsd) => match lsd.actual_end_time {
-                    Some(_) => LiveStreamDetails::VOD,
-                    None => LiveStreamDetails::Live,
-                },
-                None => LiveStreamDetails::Uploaded,
-            },
+            live_stream_details: live_stream_details,
             is_short: is_short(v.id.ok_or(MissingContent::VideoId)?.as_str()).await?,
+            is_scheduled: is_scheduled,
         })
     }))
     .await
