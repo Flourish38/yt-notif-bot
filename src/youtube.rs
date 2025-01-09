@@ -98,6 +98,7 @@ pub enum MissingContent {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum UploadsError {
     YouTube3(google_youtube3::Error),
     // Empty(PlaylistItemListResponse),
@@ -287,7 +288,8 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
         {
             Some(r) => r,
             None => Err(MissingContent::VideoDuration),
-        };
+        }
+        .map(|d| format!("`({})`", d));
         // nightmare
         let (live_stream_details, time_string, is_scheduled) =
             if let Some(lsd) = v.live_streaming_details {
@@ -302,6 +304,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                         (_, Some(_), Some(_)) => LiveStreamDetails::VOD,
                         (_, None, Some(_)) | (None, None, None) => {
                             // surely that must be a mistake
+                            println!("{lsd:?}");
                             return Err(MissingContent::LiveStreamDetails)?;
                         }
                     },

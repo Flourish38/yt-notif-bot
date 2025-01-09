@@ -1,7 +1,6 @@
 use crate::db::{get_channels_to_send, get_filters, get_playlists, update_most_recent};
 use crate::youtube::{
-    get_uploads_from_playlist, get_videos_extras, LiveStreamDetails, UploadsError, Video,
-    VideoExtras,
+    get_uploads_from_playlist, get_videos_extras, LiveStreamDetails, Video, VideoExtras,
 };
 
 use std::collections::VecDeque;
@@ -59,7 +58,7 @@ impl<'a> Workunit<'a> {
         }
 
         let msg_text = format!(
-            "{} https://youtu.be/{} {}`({})`\n```\ncategoryId: {}\ntags: [{}]\n```",
+            "{} https://youtu.be/{} {}{}\n```\ncategoryId: {}\ntags: [{}]\n```",
             match self.extras.is_short {
                 true => '📱',
                 false => '📺',
@@ -93,12 +92,11 @@ async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp)
         let mut videos = match get_uploads_from_playlist(&playlist_id).await {
             Ok(v) => v,
 
-            Err(UploadsError::MissingContent(mc)) => {
-                println!("get_uploads_from_playlist in process_playlists:\t{:?}", mc);
-                continue;
-            }
-            Err(UploadsError::YouTube3(e)) => {
-                println!("get_uploads_from_playlist in process_playlists:\t{}", e);
+            Err(e) => {
+                println!(
+                    "{}\tget_uploads_from_playlist in process_playlists:\t{:?}",
+                    playlist_id, e
+                );
                 continue;
             }
         };
@@ -112,7 +110,10 @@ async fn process_playlists<'a>(playlists: &'a Vec<String>, http: impl CacheHttp)
                 Ok(v) => v,
 
                 Err(e) => {
-                    println!("get_channels_to_send in process_playlists:\t{}", e);
+                    println!(
+                        "{}\tget_channels_to_send in process_playlists:\t{}",
+                        video.id, e
+                    );
                     continue;
                 }
             };
@@ -151,7 +152,15 @@ async fn assign_workunit_extras<'a>(
     let extras = match get_videos_extras(videos).await {
         Ok(v) => v,
         Err(e) => {
-            println!("get_videos_extras in assign_workunit_duration:\t{:?}", e);
+            println!(
+                "[{}]\tget_videos_extras in assign_workunit_extras:\t{:?}",
+                videos
+                    .iter()
+                    .map(|v| v.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                e
+            );
             return;
         }
     };
@@ -177,7 +186,7 @@ async fn do_workunits<'a>(workunits: Vec<Workunit<'a>>, http: impl CacheHttp) {
     for w in workunits {
         let msg = match w.send_message(&http).await {
             Err(e) => {
-                println!("send_message in do_workunits:\t{:?}", e);
+                println!("{}\tsend_message in do_workunits:\t{:?}", w.video.id, e);
                 continue;
             }
             Ok(msg) => msg,
@@ -200,7 +209,10 @@ async fn update_db_entry<'a>(
         return;
     };
 
-    println!("update_most_recent in update_db_entry:\t{}", e1);
+    println!(
+        "{}\tupdate_most_recent in update_db_entry:\t{}",
+        w.video.id, e1
+    );
     let Some(msg) = o_msg else {
         return; // No message that could be mistakenly sent twice, so no big deal
     };
@@ -211,8 +223,8 @@ async fn update_db_entry<'a>(
     };
 
     println!(
-        "msg.delete in update_db_entry:\t{}\nUh oh. Adding to queue to be reprocessed later.",
-        e2
+        "{}\tmsg.delete in update_db_entry:\t{}\nUh oh. Adding to queue to be reprocessed later.",
+        w.video.id, e2
     );
     db_retries.push_back(w);
 }
