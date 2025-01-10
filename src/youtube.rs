@@ -94,7 +94,6 @@ pub enum MissingContent {
     VideoDuration,
     Snippet,
     CategoryId,
-    LiveStreamDetails,
 }
 
 #[derive(Debug)]
@@ -231,6 +230,7 @@ pub enum LiveStreamDetails {
     VOD,
     Uploaded,
     Upcoming,
+    NONSENSE,
 }
 
 #[derive(Clone)]
@@ -302,11 +302,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                         (Some(_), None, None) => LiveStreamDetails::Upcoming,
                         (_, Some(_), None) => LiveStreamDetails::Live,
                         (_, Some(_), Some(_)) => LiveStreamDetails::VOD,
-                        (_, None, Some(_)) | (None, None, None) => {
-                            // surely that must be a mistake
-                            println!("{lsd:?}");
-                            return Err(MissingContent::LiveStreamDetails)?;
-                        }
+                        (_, None, Some(_)) | (None, None, None) => LiveStreamDetails::NONSENSE, // yes, this can happen. https://youtu.be/m6KNUV71sxE
                     },
                     match (
                         lsd.scheduled_start_time,
@@ -320,7 +316,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                             Some(FormattedTimestampStyle::RelativeTime),
                         )
                         .to_string(),
-                        (None, None, None) => return Err(MissingContent::LiveStreamDetails)?,
+                        (None, None, None) => "".to_string(),
                     },
                     lsd.scheduled_start_time.is_some(),
                 )

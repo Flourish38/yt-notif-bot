@@ -44,6 +44,10 @@ impl<'a> Workunit<'a> {
         &self,
         http: impl CacheHttp,
     ) -> Result<Option<Message>, SendMessageError> {
+        if matches!(self.extras.live_stream_details, LiveStreamDetails::NONSENSE) {
+            return Ok(None);
+        }
+
         let filters = get_filters(self.playlist_id, &self.channel_id).await?;
 
         if (self.extras.is_short && !filters.shorts_allowed)
@@ -68,7 +72,7 @@ impl<'a> Workunit<'a> {
                 LiveStreamDetails::Upcoming => "⏱️ ",
                 LiveStreamDetails::Live => "🔴 ",
                 LiveStreamDetails::VOD => "⭕ ",
-                LiveStreamDetails::Uploaded => "",
+                LiveStreamDetails::Uploaded | LiveStreamDetails::NONSENSE => "",
             },
             self.extras.time_string,
             self.extras.category_id,
