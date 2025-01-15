@@ -23,11 +23,12 @@ use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use sqlx::migrate::MigrateDatabase;
 use sqlx::{query, Sqlite, SqlitePool};
 use update_loop::update_loop;
+use youtube::{initialize_categories, CategoryCache};
 
 use std::env;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, OnceCell};
+use tokio::sync::{mpsc, Mutex, OnceCell};
 
 use serenity::all::{Context, EventHandler, GatewayIntents};
 use serenity::async_trait;
@@ -58,6 +59,8 @@ static KEY: OnceCell<Box<str>> = OnceCell::const_new();
 
 static YOUTUBE: OnceCell<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>> =
     OnceCell::const_new();
+
+static CATEGORY_TITLES: OnceCell<Mutex<CategoryCache>> = OnceCell::const_new();
 
 // 1 day / 10,000 (which is the rate limit)
 const TIME_PER_REQUEST: Duration = Duration::from_millis(
@@ -189,6 +192,11 @@ async fn main() -> Result<(), sqlx::Error> {
     // Have to do this instead of .expect(...) because YouTube doesn't implement Debug...
     match YOUTUBE.set(rate_limited_youtube) {
         Err(_) => panic!("Somehow a race condition for YOUTUBE???"),
+        _ => (),
+    }
+
+    match CATEGORY_TITLES.set(Mutex::new(initialize_categories().await.unwrap())) {
+        Err(_) => panic!("Somehow a race condition for CATEGORY_TITLES???"),
         _ => (),
     }
 

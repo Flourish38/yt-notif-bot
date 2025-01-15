@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 use crate::{HYPER, KEY, YOUTUBE};
 use google_youtube3::{
@@ -94,6 +94,8 @@ pub enum MissingContent {
     VideoDuration,
     Snippet,
     CategoryId,
+    VideoCategories,
+    VideoCategoryTitle,
 }
 
 #[derive(Debug)]
@@ -316,7 +318,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                             Some(FormattedTimestampStyle::RelativeTime),
                         )
                         .to_string(),
-                        (None, None, None) => "".to_string(),
+                        (None, None, None) => String::default(),
                     },
                     lsd.scheduled_start_time.is_some(),
                 )
@@ -334,4 +336,120 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
         })
     }))
     .await
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum InitializeCategoriesError {
+    MissingContent(MissingContent),
+    YouTube3(google_youtube3::Error),
+}
+
+impl From<MissingContent> for InitializeCategoriesError {
+    fn from(value: MissingContent) -> Self {
+        Self::MissingContent(value)
+    }
+}
+
+impl From<google_youtube3::Error> for InitializeCategoriesError {
+    fn from(value: google_youtube3::Error) -> Self {
+        Self::YouTube3(value)
+    }
+}
+
+pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategoriesError> {
+    let response = YOUTUBE
+        .get()
+        .unwrap()
+        .use_with(|yt| async move {
+            yt.video_categories()
+                .list(&vec!["snippet".into()])
+                .region_code("US")
+                .hl("en_US")
+                .param("key", KEY.get().unwrap())
+                .doit()
+                .await
+        })
+        .await?
+        .1;
+
+    let Some(video_categories) = response.items else {
+        return Err(MissingContent::VideoCategories)?;
+    };
+
+    let uhhh = video_categories
+        .into_iter()
+        .filter_map(|vc| match (vc.id, vc.snippet.and_then(|s| s.title)) {
+            (Some(id), Some(s)) => Some((id, s)),
+            _ => None,
+        })
+        .collect::<HashMap<_, _>>();
+
+    Ok(CategoryCache { dict: uhhh })
+}
+
+#[allow(dead_code)]
+pub enum CategoryTitleError {
+    MissingContent(MissingContent),
+    YouTube3(google_youtube3::Error),
+}
+
+impl From<MissingContent> for CategoryTitleError {
+    fn from(value: MissingContent) -> Self {
+        Self::MissingContent(value)
+    }
+}
+
+impl From<google_youtube3::Error> for CategoryTitleError {
+    fn from(value: google_youtube3::Error) -> Self {
+        Self::YouTube3(value)
+    }
+}
+
+pub struct CategoryCache {
+    dict: HashMap<String, String>,
+}
+
+impl CategoryCache {
+    pub async fn get(&mut self, id: String) -> Result<&str, CategoryTitleError> {
+        if !self.dict.contains_key(&id) {
+            let _id = id.clone();
+
+            let response = YOUTUBE
+                .get()
+                .unwrap()
+                .use_with(|yt| async move {
+                    yt.video_categories()
+                        .list(&vec!["snippet".into()])
+                        .add_id(_id.as_str())
+                        .hl("en_US")
+                        .param("key", KEY.get().unwrap())
+                        .doit()
+                        .await
+                })
+                .await?
+                .1;
+
+            let Some(video_categories) = response.items else {
+                return Err(MissingContent::VideoCategories)?;
+            };
+
+            for vc in video_categories {
+                let _id = match vc.id {
+                    Some(_id) if _id == id => _id,
+                    _ => continue,
+                };
+                let title = vc
+                    .snippet
+                    .and_then(|s| s.title)
+                    .ok_or(MissingContent::VideoCategoryTitle)?;
+                self.dict.insert(_id, title);
+            }
+        }
+
+        Ok(self
+            .dict
+            .get(&id)
+            .ok_or(MissingContent::VideoCategoryTitle)?)
+    }
 }

@@ -2,6 +2,7 @@ use crate::db::{get_channels_to_send, get_filters, get_playlists, update_most_re
 use crate::youtube::{
     get_uploads_from_playlist, get_videos_extras, LiveStreamDetails, Video, VideoExtras,
 };
+use crate::CATEGORY_TITLES;
 
 use std::collections::VecDeque;
 
@@ -62,7 +63,7 @@ impl<'a> Workunit<'a> {
         }
 
         let msg_text = format!(
-            "{} https://youtu.be/{} {}{}\n```\ncategoryId: {}\ntags: [{}]\n```",
+            "{} https://youtu.be/{} {}{}\n```\ncategoryId: {}\ncategoryTitle: {}\ntags: [{}]\n```",
             match self.extras.is_short {
                 true => '📱',
                 false => '📺',
@@ -76,6 +77,14 @@ impl<'a> Workunit<'a> {
             },
             self.extras.time_string,
             self.extras.category_id,
+            CATEGORY_TITLES
+                .get()
+                .unwrap()
+                .lock()
+                .await
+                .get(self.extras.category_id.clone())
+                .await
+                .unwrap_or("NOT_FOUND"),
             self.extras.tags.join(",")
         );
         self.channel_id
