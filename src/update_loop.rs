@@ -62,8 +62,15 @@ impl<'a> Workunit<'a> {
             return Ok(None);
         }
 
+        let mut _lock = CATEGORY_TITLES.get().unwrap().lock().await;
+
+        let (category_title, category_emoji) = _lock
+            .get(self.extras.category_id.clone())
+            .await
+            .unwrap_or(("NOT_FOUND", None));
+
         let msg_text = format!(
-            "{} https://youtu.be/{} {}{}\n```\ncategoryId: {}\ncategoryTitle: {}\ntags: [{}]\n```",
+            "{} https://youtu.be/{} {}{} {} {}",
             match self.extras.is_short {
                 true => '📱',
                 false => '📺',
@@ -76,16 +83,11 @@ impl<'a> Workunit<'a> {
                 LiveStreamDetails::Uploaded | LiveStreamDetails::NONSENSE => "",
             },
             self.extras.time_string,
-            self.extras.category_id,
-            CATEGORY_TITLES
-                .get()
-                .unwrap()
-                .lock()
-                .await
-                .get(self.extras.category_id.clone())
-                .await
-                .unwrap_or("NOT_FOUND"),
-            self.extras.tags.join(",")
+            match category_emoji {
+                Some(s) => s,
+                None => "",
+            },
+            category_title,
         );
         self.channel_id
             .send_message(

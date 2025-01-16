@@ -239,7 +239,6 @@ pub enum LiveStreamDetails {
 pub struct VideoExtras {
     pub time_string: String,
     pub category_id: String,
-    pub tags: Vec<String>,
     pub live_stream_details: LiveStreamDetails,
     pub is_short: bool,
     pub is_scheduled: bool,
@@ -329,7 +328,6 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
         Ok(VideoExtras {
             time_string: time_string,
             category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
-            tags: snippet.tags.unwrap_or_default(),
             live_stream_details: live_stream_details,
             is_short: is_short(v.id.ok_or(MissingContent::VideoId)?.as_str()).await?,
             is_scheduled: is_scheduled,
@@ -388,6 +386,40 @@ pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategori
     Ok(CategoryCache { dict: uhhh })
 }
 
+const CATEGORY_EMOJI: [(&str, &str); 31] = [
+    ("Film & Animation", "🎞️"),
+    ("Autos & Vehicles", "🚗"),
+    ("Music", "🎶"),
+    ("Pets & Animals", "🐈"),
+    ("Sports", "⚽"),
+    ("Short Movies", "📹"),
+    ("Travel & Events", "🗺️"),
+    ("Gaming", "🎮"),
+    ("Videoblogging", "🤳"),
+    ("People & Blogs", "📓"),
+    ("Comedy", "😂"),
+    ("Entertainment", "🎭"),
+    ("News & Politics", "🗞️"),
+    ("Howto & Style", "🧤"),
+    ("Education", "🎓"),
+    ("Science & Technology", "📡"),
+    ("Nonprofits & Activism", "📢"),
+    ("Movies", "📼"),
+    ("Anime/Animation", "✨"),
+    ("Action/Adventure", "🚵"),
+    ("Classics", "🎼"),
+    ("Documentary", "🔍"),
+    ("Drama", "🤬"),
+    ("Family", "👪"),
+    ("Foreign", "🏝️"),
+    ("Horror", "👻"),
+    ("Sci-Fi/Fantasy", "🔮"),
+    ("Thriller", "😰"),
+    ("Shorts", "📱"),
+    ("Shows", "📺"),
+    ("Trailers", "🎬"),
+];
+
 #[allow(dead_code)]
 pub enum CategoryTitleError {
     MissingContent(MissingContent),
@@ -411,7 +443,10 @@ pub struct CategoryCache {
 }
 
 impl CategoryCache {
-    pub async fn get(&mut self, id: String) -> Result<&str, CategoryTitleError> {
+    pub async fn get(
+        &mut self,
+        id: String,
+    ) -> Result<(&str, Option<&'static str>), CategoryTitleError> {
         if !self.dict.contains_key(&id) {
             let _id = id.clone();
 
@@ -447,9 +482,17 @@ impl CategoryCache {
             }
         }
 
-        Ok(self
+        let title = self
             .dict
             .get(&id)
-            .ok_or(MissingContent::VideoCategoryTitle)?)
+            .ok_or(MissingContent::VideoCategoryTitle)?
+            .as_str();
+
+        let emoji = CATEGORY_EMOJI
+            .iter()
+            .find(|(t, _)| *t == title)
+            .map(|(_, s)| *s);
+
+        Ok((title, emoji))
     }
 }
