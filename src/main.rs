@@ -57,6 +57,9 @@ static HYPER: OnceCell<hyper::Client<HttpsConnector<HttpConnector>>> = OnceCell:
 
 static KEY: OnceCell<Box<str>> = OnceCell::const_new();
 
+static REGION_CODE: OnceCell<Box<str>> = OnceCell::const_new();
+static LANGUAGE: OnceCell<Box<str>> = OnceCell::const_new();
+
 static YOUTUBE: OnceCell<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>> =
     OnceCell::const_new();
 
@@ -174,6 +177,13 @@ async fn main() -> Result<(), sqlx::Error> {
 
     KEY.set(key.into_boxed_str())
         .expect("Somehow a race condition for KEY???");
+
+    LANGUAGE
+        .set(config.get_string("language").unwrap().into_boxed_str())
+        .unwrap();
+    REGION_CODE
+        .set(config.get_string("region_code").unwrap().into_boxed_str())
+        .unwrap();
 
     CONFIG
         .set(config)
