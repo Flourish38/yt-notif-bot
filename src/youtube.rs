@@ -374,7 +374,14 @@ pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategori
         .use_with(|yt| async move {
             yt.video_categories()
                 .list(&vec!["snippet".into()])
-                .region_code(CONFIG.get().unwrap().get("region_code").unwrap())
+                .region_code(
+                    CONFIG
+                        .get()
+                        .unwrap()
+                        .get::<String>("region_code")
+                        .unwrap()
+                        .as_str(),
+                )
                 .hl(CONFIG.get().unwrap().get("language").unwrap())
                 .param("key", KEY.get().unwrap())
                 .doit()
