@@ -175,6 +175,10 @@ async fn main() -> Result<(), sqlx::Error> {
     KEY.set(key.into_boxed_str())
         .expect("Somehow a race condition for KEY???");
 
+    CONFIG
+        .set(config)
+        .expect("Somehow a race condition for CONFIG???");
+
     HYPER
         .set(
             hyper::Client::builder().build(
@@ -201,10 +205,6 @@ async fn main() -> Result<(), sqlx::Error> {
         Err(_) => panic!("Somehow a race condition for CATEGORY_TITLES???"),
         _ => (),
     }
-
-    CONFIG
-        .set(config)
-        .expect("Somehow a race condition for CONFIG???");
 
     // Build our client.
     let mut client = serenity::Client::builder(token, GatewayIntents::empty())
