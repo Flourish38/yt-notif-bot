@@ -10,3 +10,8 @@ key = YOUR_KEY_HERE_IN_QUOTES
 # List of user IDs of bot administrators
 admins = [  ]
 
+# Your region. You likely will not need to change this.
+region_code = "US"
+
+# Your language. You can get a list of available languages here: https://developers.google.com/youtube/v3/docs/i18nLanguages/list
+language = "en_US"

@@ -7,6 +7,7 @@ This is a discord bot that sends a message whenever a YouTube channel that you s
 Put your token in a file called `config.(ini|json|yaml|toml|ron|json5)` with the key "token".
 You will need to include a [YouTube Data API key](https://developers.google.com/youtube/v3/getting-started#before-you-start) with the key "key".
 You can also specify admin users in an array with the key "admins". Only users in the admins list can shut down your bot with /shutdown.
+Optionally, you can specify a [region code](https://developers.google.com/youtube/v3/docs/videoCategories/list#regionCode) with the key "region_code", and a [language](https://developers.google.com/youtube/v3/docs/i18nLanguages) with the key "language".
 
 For example, a file `config.toml` would look like:
 ```toml
@@ -29,7 +30,7 @@ Don't forget to use `default-features = false` if you do this.
 
 Then, from the same directory that contains `Cargo.toml`, simply run `cargo run --release`!
 If you don't have cargo installed, you can [get it here](https://doc.rust-lang.org/cargo/getting-started/installation.html).
-It will probably take a few minutes to compile, but certainly less than 15 minutes.
+It will probably take a few minutes to compile, but certainly less than 15 minutes, and only the first time.
 
 ## How to use it
 

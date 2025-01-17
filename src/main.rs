@@ -110,6 +110,8 @@ fn build_config() -> Result<Config, ConfigError> {
         .set_default("admins", Vec::<u64>::new())?
         .set_override_option("token", env::var("DISCORD_TOKEN").ok())?
         .set_override_option("key", env::var("YOUTUBE_KEY").ok())?
+        .set_default("region_code", "US")?
+        .set_default("language", "en_US")?
         .build()
 }
 

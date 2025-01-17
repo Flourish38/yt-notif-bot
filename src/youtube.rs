@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Debug};
 
-use crate::{HYPER, KEY, YOUTUBE};
+use crate::{CONFIG, HYPER, KEY, YOUTUBE};
 use google_youtube3::{
     api::PlaylistItemContentDetails,
     chrono::{DateTime, Utc},
@@ -267,7 +267,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                 query = query.add_id(video.id.as_str());
             }
             query
-                .hl("en_US")
+                .hl(CONFIG.get().unwrap().get("language").unwrap())
                 .max_results(50)
                 .param("key", KEY.get().unwrap())
                 .doit()
@@ -374,8 +374,8 @@ pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategori
         .use_with(|yt| async move {
             yt.video_categories()
                 .list(&vec!["snippet".into()])
-                .region_code("US")
-                .hl("en_US")
+                .region_code(CONFIG.get().unwrap().get("region_code").unwrap())
+                .hl(CONFIG.get().unwrap().get("language").unwrap())
                 .param("key", KEY.get().unwrap())
                 .doit()
                 .await
@@ -470,7 +470,7 @@ impl CategoryCache {
                     yt.video_categories()
                         .list(&vec!["snippet".into()])
                         .add_id(_id.as_str())
-                        .hl("en_US")
+                        .hl(CONFIG.get().unwrap().get("language").unwrap())
                         .param("key", KEY.get().unwrap())
                         .doit()
                         .await
