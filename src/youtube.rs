@@ -386,38 +386,39 @@ pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategori
     Ok(CategoryCache { dict: uhhh })
 }
 
-const CATEGORY_EMOJI: [(&str, &str); 31] = [
-    ("Film & Animation", "🎞️"),
-    ("Autos & Vehicles", "🚗"),
-    ("Music", "🎶"),
-    ("Pets & Animals", "🐈"),
-    ("Sports", "⚽"),
-    ("Short Movies", "📹"),
-    ("Travel & Events", "🗺️"),
-    ("Gaming", "🎮"),
-    ("Videoblogging", "🤳"),
-    ("People & Blogs", "📓"),
-    ("Comedy", "😂"),
-    ("Entertainment", "🎭"),
-    ("News & Politics", "🗞️"),
-    ("Howto & Style", "🧤"),
-    ("Education", "🎓"),
-    ("Science & Technology", "📡"),
-    ("Nonprofits & Activism", "📢"),
-    ("Movies", "📼"),
-    ("Anime/Animation", "✨"),
-    ("Action/Adventure", "🚵"),
-    ("Classics", "🎼"),
-    ("Documentary", "🔍"),
-    ("Drama", "🤬"),
-    ("Family", "👪"),
-    ("Foreign", "🏝️"),
-    ("Horror", "👻"),
-    ("Sci-Fi/Fantasy", "🔮"),
-    ("Thriller", "😰"),
-    ("Shorts", "📱"),
-    ("Shows", "📺"),
-    ("Trailers", "🎬"),
+const CATEGORY_EMOJI: [(&str, &str); 32] = [
+    ("1", "🎞️"),
+    ("2", "🚗"),
+    ("10", "🎶"),
+    ("15", "🐈"),
+    ("17", "⚽"),
+    ("18", "📹"),
+    ("19", "🗺️"),
+    ("20", "🎮"),
+    ("21", "🤳"),
+    ("22", "📓"),
+    ("23", "😂"),
+    ("24", "🎭"),
+    ("25", "🗞️"),
+    ("26", "🧤"),
+    ("27", "🎓"),
+    ("28", "📡"),
+    ("29", "📢"),
+    ("30", "📼"),
+    ("31", "✨"),
+    ("32", "🚵"),
+    ("33", "🎼"),
+    ("34", "😂"),
+    ("35", "🔍"),
+    ("36", "🤬"),
+    ("37", "👪"),
+    ("38", "🏝️"),
+    ("39", "👻"),
+    ("40", "🔮"),
+    ("41", "😰"),
+    ("42", "📱"),
+    ("43", "📺"),
+    ("44", "🎬"),
 ];
 
 #[allow(dead_code)]
@@ -490,7 +491,7 @@ impl CategoryCache {
 
         let emoji = CATEGORY_EMOJI
             .iter()
-            .find(|(t, _)| *t == title)
+            .find(|(t, _)| *t == id.as_str())
             .map(|(_, s)| *s);
 
         Ok((title, emoji))
