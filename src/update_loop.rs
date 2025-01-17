@@ -70,11 +70,9 @@ impl<'a> Workunit<'a> {
             .unwrap_or(("NOT_FOUND", None));
 
         let msg_text = format!(
-            "{} https://youtu.be/{} {}{} {} {}",
-            match self.extras.is_short {
-                true => '📱',
-                false => '📺',
-            },
+            "{} [{}](https://youtu.be/{}) {}{} {} {}",
+            self.extras.channel_title,
+            self.extras.video_title,
             self.video.id,
             match self.extras.live_stream_details {
                 LiveStreamDetails::Upcoming => "⏱️ ",

@@ -96,6 +96,9 @@ pub enum MissingContent {
     CategoryId,
     VideoCategories,
     VideoCategoryTitle,
+    Localized,
+    VideoTitle,
+    ChannelTitle,
 }
 
 #[derive(Debug)]
@@ -239,6 +242,8 @@ pub enum LiveStreamDetails {
 pub struct VideoExtras {
     pub time_string: String,
     pub category_id: String,
+    pub video_title: String,
+    pub channel_title: String,
     pub live_stream_details: LiveStreamDetails,
     pub is_short: bool,
     pub is_scheduled: bool,
@@ -262,6 +267,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                 query = query.add_id(video.id.as_str());
             }
             query
+                .hl("en_US")
                 .max_results(50)
                 .param("key", KEY.get().unwrap())
                 .doit()
@@ -328,6 +334,12 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
         Ok(VideoExtras {
             time_string: time_string,
             category_id: snippet.category_id.ok_or(MissingContent::CategoryId)?,
+            video_title: snippet
+                .localized
+                .ok_or(MissingContent::Localized)?
+                .title
+                .ok_or(MissingContent::VideoTitle)?,
+            channel_title: snippet.channel_title.ok_or(MissingContent::ChannelTitle)?,
             live_stream_details: live_stream_details,
             is_short: is_short(v.id.ok_or(MissingContent::VideoId)?.as_str()).await?,
             is_scheduled: is_scheduled,
@@ -387,38 +399,38 @@ pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategori
 }
 
 const CATEGORY_EMOJI: [(&str, &str); 32] = [
-    ("1", "🎞️"),
-    ("2", "🚗"),
-    ("10", "🎶"),
-    ("15", "🐈"),
-    ("17", "⚽"),
-    ("18", "📹"),
-    ("19", "🗺️"),
-    ("20", "🎮"),
-    ("21", "🤳"),
-    ("22", "📓"),
-    ("23", "😂"),
-    ("24", "🎭"),
-    ("25", "🗞️"),
-    ("26", "🧤"),
-    ("27", "🎓"),
-    ("28", "📡"),
-    ("29", "📢"),
-    ("30", "📼"),
-    ("31", "✨"),
-    ("32", "🚵"),
-    ("33", "🎼"),
-    ("34", "😂"),
-    ("35", "🔍"),
-    ("36", "🤬"),
-    ("37", "👪"),
-    ("38", "🏝️"),
-    ("39", "👻"),
-    ("40", "🔮"),
-    ("41", "😰"),
-    ("42", "📱"),
-    ("43", "📺"),
-    ("44", "🎬"),
+    ("1", "🎞️"),  // "Film & Animation"
+    ("2", "🚗"),  // "Autos & Vehicles"
+    ("10", "🎶"), // "Music"
+    ("15", "🐈"), // "Pets & Animals"
+    ("17", "⚽"), // "Sports"
+    ("18", "📹"), // "Short Movies"
+    ("19", "🗺️"), // "Travel & Events"
+    ("20", "🎮"), // "Gaming"
+    ("21", "🤳"), // "Videoblogging"
+    ("22", "📓"), // "People & Blogs"
+    ("23", "😂"), // "Comedy"
+    ("24", "🎭"), // "Entertainment"
+    ("25", "🗞️"), // "News & Politics"
+    ("26", "🧤"), // "Howto & Style"
+    ("27", "🎓"), // "Education"
+    ("28", "📡"), // "Science & Technology"
+    ("29", "📢"), // "Nonprofits & Activism"
+    ("30", "📼"), // "Movies"
+    ("31", "✨"), // "Anime/Animation"
+    ("32", "🚵"), // "Action/Adventure"
+    ("33", "🎼"), // "Classics"
+    ("34", "😂"), // "Comedy"
+    ("35", "🔍"), // "Documentary"
+    ("36", "🤬"), // "Drama"
+    ("37", "👪"), // "Family"
+    ("38", "🏝️"), // "Foreign"
+    ("39", "👻"), // "Horror"
+    ("40", "🔮"), // "Sci-Fi/Fantasy"
+    ("41", "😰"), // "Thriller"
+    ("42", "📱"), // "Shorts"
+    ("43", "📺"), // "Shows"
+    ("44", "🎬"), // "Trailers"
 ];
 
 #[allow(dead_code)]
