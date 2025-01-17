@@ -267,7 +267,12 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                 query = query.add_id(video.id.as_str());
             }
             query
-                .hl(CONFIG.get().unwrap().get("language").unwrap())
+                .hl(CONFIG
+                    .get()
+                    .unwrap()
+                    .get_string("language")
+                    .unwrap()
+                    .as_str())
                 .max_results(50)
                 .param("key", KEY.get().unwrap())
                 .doit()
@@ -378,11 +383,16 @@ pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategori
                     CONFIG
                         .get()
                         .unwrap()
-                        .get::<String>("region_code")
+                        .get_string("region_code")
                         .unwrap()
                         .as_str(),
                 )
-                .hl(CONFIG.get().unwrap().get("language").unwrap())
+                .hl(CONFIG
+                    .get()
+                    .unwrap()
+                    .get_string("language")
+                    .unwrap()
+                    .as_str())
                 .param("key", KEY.get().unwrap())
                 .doit()
                 .await
@@ -477,7 +487,12 @@ impl CategoryCache {
                     yt.video_categories()
                         .list(&vec!["snippet".into()])
                         .add_id(_id.as_str())
-                        .hl(CONFIG.get().unwrap().get("language").unwrap())
+                        .hl(CONFIG
+                            .get()
+                            .unwrap()
+                            .get_string("language")
+                            .unwrap()
+                            .as_str())
                         .param("key", KEY.get().unwrap())
                         .doit()
                         .await
