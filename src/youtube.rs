@@ -1,4 +1,7 @@
-use std::{collections::HashMap, fmt::Debug};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+};
 
 use crate::{HYPER, KEY, LANGUAGE, REGION_CODE, YOUTUBE};
 use google_youtube3::{
@@ -8,26 +11,18 @@ use google_youtube3::{
 };
 use hyper::{body, http::uri::InvalidUri, Body, Response, StatusCode};
 use serenity::all::{FormattedTimestamp, FormattedTimestampStyle};
+use thiserror::Error;
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug, Error)]
 pub enum PlaylistIdError {
-    UriParseError(InvalidUri),
-    Hyper(hyper::Error),
+    #[error("UriParse({0})")]
+    UriParse(#[from] InvalidUri),
+    #[error("Hyper({0})")]
+    Hyper(#[from] hyper::Error),
+    #[error("BadStatus({0})")]
     BadStatus(StatusCode),
-    BodyParseError(String),
-}
-
-impl From<hyper::Error> for PlaylistIdError {
-    fn from(value: hyper::Error) -> Self {
-        Self::Hyper(value)
-    }
-}
-
-impl From<InvalidUri> for PlaylistIdError {
-    fn from(value: InvalidUri) -> Self {
-        Self::UriParseError(value)
-    }
+    #[error("BodyParse({0})")]
+    BodyParse(String),
 }
 
 pub async fn get_upload_playlist_id(
@@ -80,13 +75,13 @@ pub async fn get_upload_playlist_id(
     }
 
     if buf.len() != 24 || &buf[0..2] != "UU" {
-        Err(PlaylistIdError::BodyParseError(channel_uri))
+        Err(PlaylistIdError::BodyParse(channel_uri))
     } else {
         Ok(buf)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MissingContent {
     ContentDetails,
     VideoId,
@@ -101,24 +96,19 @@ pub enum MissingContent {
     ChannelTitle,
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
+impl Display for MissingContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+#[derive(Debug, Error)]
 pub enum UploadsError {
-    YouTube3(google_youtube3::Error),
+    #[error("YouTube3({0})")]
+    YouTube3(#[from] google_youtube3::Error),
     // Empty(PlaylistItemListResponse),
-    MissingContent(MissingContent),
-}
-
-impl From<google_youtube3::Error> for UploadsError {
-    fn from(value: google_youtube3::Error) -> Self {
-        UploadsError::YouTube3(value)
-    }
-}
-
-impl From<MissingContent> for UploadsError {
-    fn from(value: MissingContent) -> Self {
-        Self::MissingContent(value)
-    }
+    #[error("MissingContent({0})")]
+    MissingContent(#[from] MissingContent),
 }
 
 #[derive(Debug, Clone)]
@@ -169,24 +159,14 @@ pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, 
     }
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug, Error)]
 pub enum ShortsError {
-    Hyper(hyper::Error),
-    UriParseError(InvalidUri),
+    #[error("Hyper({0})")]
+    Hyper(#[from] hyper::Error),
+    #[error("UriParse({0})")]
+    UriParse(#[from] InvalidUri),
+    #[error("BadStatus({0})")]
     BadStatus(StatusCode),
-}
-
-impl From<InvalidUri> for ShortsError {
-    fn from(value: InvalidUri) -> Self {
-        Self::UriParseError(value)
-    }
-}
-
-impl From<hyper::Error> for ShortsError {
-    fn from(value: hyper::Error) -> Self {
-        Self::Hyper(value)
-    }
 }
 
 pub async fn is_short(id: &str) -> Result<bool, ShortsError> {
@@ -201,32 +181,18 @@ pub async fn is_short(id: &str) -> Result<bool, ShortsError> {
     }
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug, Error)]
 pub enum ExtrasError {
-    YouTube3(google_youtube3::Error),
-    MissingContent(MissingContent),
+    #[error("YouTube3({0})")]
+    YouTube3(#[from] google_youtube3::Error),
+    #[error("MissingContent({0})")]
+    MissingContent(#[from] MissingContent),
+    #[error("Empty({0:?})")]
     Empty(Response<Body>),
+    #[error("LengthMismatch({0:?})")]
     LengthMismatch(Vec<google_youtube3::api::Video>),
-    ShortsError(ShortsError),
-}
-
-impl From<google_youtube3::Error> for ExtrasError {
-    fn from(value: google_youtube3::Error) -> Self {
-        ExtrasError::YouTube3(value)
-    }
-}
-
-impl From<MissingContent> for ExtrasError {
-    fn from(value: MissingContent) -> Self {
-        ExtrasError::MissingContent(value)
-    }
-}
-
-impl From<ShortsError> for ExtrasError {
-    fn from(value: ShortsError) -> Self {
-        Self::ShortsError(value)
-    }
+    #[error("ShortsError({0})")]
+    ShortsError(#[from] ShortsError),
 }
 
 #[derive(Clone)]
@@ -348,23 +314,12 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
     .await
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug, Error)]
 pub enum InitializeCategoriesError {
-    MissingContent(MissingContent),
-    YouTube3(google_youtube3::Error),
-}
-
-impl From<MissingContent> for InitializeCategoriesError {
-    fn from(value: MissingContent) -> Self {
-        Self::MissingContent(value)
-    }
-}
-
-impl From<google_youtube3::Error> for InitializeCategoriesError {
-    fn from(value: google_youtube3::Error) -> Self {
-        Self::YouTube3(value)
-    }
+    #[error("MissingContent({0})")]
+    MissingContent(#[from] MissingContent),
+    #[error("YouTube3({0})")]
+    YouTube3(#[from] google_youtube3::Error),
 }
 
 pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategoriesError> {
@@ -433,22 +388,12 @@ const CATEGORY_EMOJI: [(&str, &str); 32] = [
     ("44", "🎬"), // "Trailers"
 ];
 
-#[allow(dead_code)]
+#[derive(Debug, Error)]
 pub enum CategoryTitleError {
-    MissingContent(MissingContent),
-    YouTube3(google_youtube3::Error),
-}
-
-impl From<MissingContent> for CategoryTitleError {
-    fn from(value: MissingContent) -> Self {
-        Self::MissingContent(value)
-    }
-}
-
-impl From<google_youtube3::Error> for CategoryTitleError {
-    fn from(value: google_youtube3::Error) -> Self {
-        Self::YouTube3(value)
-    }
+    #[error("MissingContent({0})")]
+    MissingContent(#[from] MissingContent),
+    #[error("YouTube3({0})")]
+    YouTube3(#[from] google_youtube3::Error),
 }
 
 #[derive(Debug)]

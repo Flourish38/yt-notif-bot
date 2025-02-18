@@ -216,7 +216,7 @@ async fn get_playlist_id_from_url<'a>(
             format!("HTTP request returned bad status code: {}", status),
         )
         .await),
-        Err(PlaylistIdError::BodyParseError(e)) => Err(edit_deferred_message_simple(
+        Err(PlaylistIdError::BodyParse(e)) => Err(edit_deferred_message_simple(
             &ctx,
             &command,
             format!(
@@ -229,7 +229,7 @@ async fn get_playlist_id_from_url<'a>(
             Err(edit_deferred_message_simple(&ctx, &command, format!("HTTP Error: {}", e)).await)
         }
 
-        Err(PlaylistIdError::UriParseError(_)) => Err(edit_deferred_message_simple(
+        Err(PlaylistIdError::UriParse(_)) => Err(edit_deferred_message_simple(
             &ctx,
             &command,
             format!(
