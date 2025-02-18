@@ -209,7 +209,7 @@ async fn main() -> Result<(), MainError> {
         .unwrap();
 
     let youtube = YouTube::new(HYPER.get().unwrap().clone(), NoToken);
-    let rate_limited_youtube = RateLimiter::new(TIME_PER_REQUEST, youtube);
+    let rate_limited_youtube = RateLimiter::new_fast(TIME_PER_REQUEST, youtube);
 
     // Have to do this instead of .unwrap() because YouTube doesn't implement Debug...
     match YOUTUBE.set(rate_limited_youtube) {
