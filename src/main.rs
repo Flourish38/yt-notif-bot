@@ -28,6 +28,8 @@ use youtube::{initialize_categories, CategoryCache};
 use std::env;
 use std::time::Duration;
 
+use thiserror::Error;
+
 use tokio::sync::{mpsc, Mutex, OnceCell};
 
 use serenity::all::{Context, EventHandler, GatewayIntents};
@@ -118,8 +120,18 @@ fn build_config() -> Result<Config, ConfigError> {
         .build()
 }
 
+#[derive(Error, Debug)]
+pub enum MainError {
+    #[error("Sqlx({0})")]
+    Sqlx(#[from] sqlx::Error),
+    #[error("Config({0})")]
+    Config(#[from] ConfigError),
+    #[error("Serenity({0})")]
+    Serenity(#[from] serenity::Error),
+}
+
 #[tokio::main]
-async fn main() -> Result<(), sqlx::Error> {
+async fn main() -> Result<(), MainError> {
     // based on https://tms-dev-blog.com/rust-sqlx-basics-with-sqlite/#Creating_an_SQLite_database, accessed 2024-08-20.
     if !Sqlite::database_exists(DB_URL).await? {
         println!("Creating DB files.");
@@ -139,20 +151,19 @@ async fn main() -> Result<(), sqlx::Error> {
     } else {
         DB.set(SqlitePool::connect(DB_URL).await?)
     }
-    .expect("Somehow a race condition for DB???");
+    .unwrap();
 
     update_db_schema().await?;
 
     // Configure the client with your Discord bot token in your `config` file.
-    let config = build_config().expect("Config failed");
+    let config = build_config()?;
 
     let token = config.get_string("token").expect("Token not found. Either:\n
                                                                     - put it in the `config` file (token = \"token\")\n
                                                                     - set environment variable DISCORD_TOKEN.\n");
 
     let admins = config
-        .get_array("admins")
-        .expect("Somehow failed to get admin list even though there is a default value??")
+        .get_array("admins")?
         .iter()
         .map(|val| {
             UserId::new(
@@ -167,16 +178,13 @@ async fn main() -> Result<(), sqlx::Error> {
         println!("\tWARNING: No admin users specified in config file!\n\tBy default, any user will be able to shut down your bot.");
     }
 
-    ADMIN_USERS
-        .set(admins)
-        .expect("Somehow a race condition for ADMIN_USERS???");
+    ADMIN_USERS.set(admins).unwrap();
 
     let key = config.get_string("key").expect("YouTube Data API key not found. Either:\n
                                                                     - put it in the `config` file (key = \"key\")\n
                                                                     - set environment variable YOUTUBE_KEY.\n");
 
-    KEY.set(key.into_boxed_str())
-        .expect("Somehow a race condition for KEY???");
+    KEY.set(key.into_boxed_str()).unwrap();
 
     LANGUAGE
         .set(config.get_string("language").unwrap().into_boxed_str())
@@ -185,9 +193,7 @@ async fn main() -> Result<(), sqlx::Error> {
         .set(config.get_string("region_code").unwrap().into_boxed_str())
         .unwrap();
 
-    CONFIG
-        .set(config)
-        .expect("Somehow a race condition for CONFIG???");
+    CONFIG.set(config).unwrap();
 
     HYPER
         .set(
@@ -200,33 +206,29 @@ async fn main() -> Result<(), sqlx::Error> {
                     .build(),
             ),
         )
-        .expect("Somehow a race condition for HYPER???");
+        .unwrap();
 
     let youtube = YouTube::new(HYPER.get().unwrap().clone(), NoToken);
     let rate_limited_youtube = RateLimiter::new(TIME_PER_REQUEST, youtube);
 
-    // Have to do this instead of .expect(...) because YouTube doesn't implement Debug...
+    // Have to do this instead of .unwrap() because YouTube doesn't implement Debug...
     match YOUTUBE.set(rate_limited_youtube) {
         Err(_) => panic!("Somehow a race condition for YOUTUBE???"),
         _ => (),
     }
 
-    match CATEGORY_TITLES.set(Mutex::new(initialize_categories().await.unwrap())) {
-        Err(_) => panic!("Somehow a race condition for CATEGORY_TITLES???"),
-        _ => (),
-    }
+    CATEGORY_TITLES
+        .set(Mutex::new(initialize_categories().await.unwrap()))
+        .unwrap();
 
     // Build our client.
     let mut client = serenity::Client::builder(token, GatewayIntents::empty())
         .event_handler(Handler)
-        .await
-        .expect("Error creating client");
+        .await?;
 
     // Channel for the shutdown command to use later
     let (sender, mut receiver) = mpsc::channel(64);
-    SHUTDOWN_SENDER
-        .set(sender)
-        .expect("Somehow a race condition for SHUTDOWN_SENDER???");
+    SHUTDOWN_SENDER.set(sender).unwrap();
 
     let shard_manager = client.shard_manager.clone();
 
@@ -244,10 +246,10 @@ async fn main() -> Result<(), sqlx::Error> {
     });
 
     // Start the client.
-    match client.start().await {
-        Err(why) => println!("Client error: {}", why),
-        Ok(_) => println!("Client shutdown cleanly"),
-    }
+
+    client.start().await?;
+
+    println!("Client shutdown cleanly");
 
     Ok(())
 }

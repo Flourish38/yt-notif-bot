@@ -451,6 +451,7 @@ impl From<google_youtube3::Error> for CategoryTitleError {
     }
 }
 
+#[derive(Debug)]
 pub struct CategoryCache {
     dict: HashMap<String, String>,
 }
