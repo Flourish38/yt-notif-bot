@@ -7,6 +7,7 @@ use crate::CATEGORY_TITLES;
 use std::collections::VecDeque;
 
 use serenity::all::{CacheHttp, ChannelId, CreateMessage, Message, MessageFlags};
+use thiserror::Error;
 
 struct IndexWorkunit<'a> {
     playlist_id: &'a str,
@@ -21,23 +22,12 @@ struct Workunit<'a> {
     channel_id: ChannelId,
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug, Error)]
 enum SendMessageError {
-    Serenity(serenity::Error),
-    Sqlx(sqlx::Error),
-}
-
-impl From<serenity::Error> for SendMessageError {
-    fn from(value: serenity::Error) -> Self {
-        Self::Serenity(value)
-    }
-}
-
-impl From<sqlx::Error> for SendMessageError {
-    fn from(value: sqlx::Error) -> Self {
-        Self::Sqlx(value)
-    }
+    #[error("Serenity({0})")]
+    Serenity(#[from] serenity::Error),
+    #[error("Sqlx({0})")]
+    Sqlx(#[from] sqlx::Error),
 }
 
 impl<'a> Workunit<'a> {
