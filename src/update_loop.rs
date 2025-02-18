@@ -70,10 +70,8 @@ impl<'a> Workunit<'a> {
             .unwrap_or(("NOT_FOUND", None));
 
         let msg_text = format!(
-            "{} [{}](https://youtu.be/{}) {}{} {} {}",
+            "{} {}{} {} {}\n[{}](https://youtu.be/{})",
             self.extras.channel_title,
-            self.extras.video_title,
-            self.video.id,
             match self.extras.live_stream_details {
                 LiveStreamDetails::Upcoming => "⏱️ ",
                 LiveStreamDetails::Live => "🔴 ",
@@ -86,6 +84,8 @@ impl<'a> Workunit<'a> {
                 None => "",
             },
             category_title,
+            self.extras.video_title,
+            self.video.id,
         );
         self.channel_id
             .send_message(
