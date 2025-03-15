@@ -9,7 +9,7 @@ use google_youtube3::{
     chrono::{DateTime, Utc},
     hyper,
 };
-use hyper::{body, http::uri::InvalidUri, Body, Response, StatusCode};
+use hyper::{Body, Response, StatusCode, body, http::uri::InvalidUri};
 use serenity::all::{FormattedTimestamp, FormattedTimestampStyle};
 use thiserror::Error;
 
@@ -134,7 +134,7 @@ pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, 
     let response = YOUTUBE
         .get()
         .unwrap()
-        .use_with(|yt| async move {
+        .use_with(async |yt| {
             yt.playlist_items()
                 .list(&vec!["contentDetails".into()])
                 .playlist_id(playlist_id)
@@ -223,7 +223,7 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
     let response = YOUTUBE
         .get()
         .unwrap()
-        .use_with(|yt| async move {
+        .use_with(async |yt| {
             let mut query = yt.videos().list(&vec![
                 "contentDetails".into(),
                 "snippet".into(),
@@ -326,7 +326,7 @@ pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategori
     let response = YOUTUBE
         .get()
         .unwrap()
-        .use_with(|yt| async move {
+        .use_with(async |yt| {
             yt.video_categories()
                 .list(&vec!["snippet".into()])
                 .region_code(REGION_CODE.get().unwrap())
@@ -412,7 +412,7 @@ impl CategoryCache {
             let response = YOUTUBE
                 .get()
                 .unwrap()
-                .use_with(|yt| async move {
+                .use_with(async |yt| {
                     yt.video_categories()
                         .list(&vec!["snippet".into()])
                         .add_id(_id.as_str())
