@@ -6,6 +6,7 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-lazy = "0.1.2"
 config = "0.14.0"
 google-youtube3 = "5.0.5"
 serenity = "0.12.2"

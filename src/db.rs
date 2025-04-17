@@ -2,7 +2,7 @@ use crate::DB;
 
 use google_youtube3::chrono::{DateTime, SecondsFormat, Utc};
 use serenity::all::ChannelId;
-use sqlx::{query, sqlite::SqliteQueryResult, Row};
+use sqlx::{Row, query, sqlite::SqliteQueryResult};
 
 fn into_sqlite(dt: &DateTime<Utc>) -> String {
     dt.to_rfc3339_opts(SecondsFormat::Secs, true)
@@ -29,7 +29,7 @@ pub async fn add_channel(
     .bind(playlist_id)
     .bind(channel_id.get() as i64)
     .bind(into_sqlite(&Utc::now()))
-    .execute(DB.get().unwrap())
+    .execute(DB.force().await)
     .await
 }
 
@@ -40,7 +40,7 @@ pub async fn get_num_playlists() -> Result<u32, sqlx::Error> {
         "SELECT COUNT(DISTINCT playlist_id) playlist_id 
             FROM channels",
     )
-    .fetch_one(DB.get().unwrap())
+    .fetch_one(DB.force().await)
     .await?
     .try_get(0)
 }
@@ -51,7 +51,7 @@ pub async fn get_playlists() -> Result<Vec<String>, sqlx::Error> {
             FROM channels 
             ORDER BY playlist_id",
     )
-    .fetch_all(DB.get().unwrap())
+    .fetch_all(DB.force().await)
     .await?
     .into_iter()
     .map(|s| s.try_get(0))
@@ -70,9 +70,8 @@ pub async fn get_channels_to_send(
     )
     .bind(playlist_id)
     .bind(into_sqlite(published_at))
-    .fetch_all(DB.get().unwrap())
-    .await
-    .unwrap()
+    .fetch_all(DB.force().await)
+    .await?
     .into_iter()
     .map(|s| Ok(ChannelId::new(s.try_get(0)?)))
     .collect()
@@ -92,7 +91,7 @@ pub async fn update_most_recent(
     .bind(into_sqlite(new_value))
     .bind(playlist_id)
     .bind(channel_id.get() as i64)
-    .execute(DB.get().unwrap())
+    .execute(DB.force().await)
     .await
 }
 
@@ -107,13 +106,13 @@ pub async fn delete_channel(
     )
     .bind(playlist_id)
     .bind(channel_id.get() as i64)
-    .execute(DB.get().unwrap())
+    .execute(DB.force().await)
     .await
 }
 
 const CURRENT_VERSION: i32 = 1;
 pub async fn update_db_schema() -> Result<(), sqlx::Error> {
-    let db = DB.get().unwrap();
+    let db = DB.force().await;
 
     let mut user_version: i32 = query("PRAGMA user_version")
         .fetch_one(db)
@@ -171,7 +170,7 @@ pub async fn get_filters(
     )
     .bind(playlist_id)
     .bind(channel_id.get() as i64)
-    .fetch_one(DB.get().unwrap())
+    .fetch_one(DB.force().await)
     .await?;
 
     Ok(Filters {

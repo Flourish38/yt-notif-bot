@@ -31,7 +31,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use tokio::sync::{Mutex, OnceCell, mpsc};
+use tokio::sync::{Mutex, mpsc};
 
 use serenity::all::{Context, EventHandler, GatewayIntents};
 use serenity::async_trait;
@@ -63,7 +63,30 @@ static CONFIG: LazyLock<Config> = LazyLock::new(|| build_config().unwrap());
 
 const DB_URL: &str = "sqlite://sqlite.db";
 
-static DB: OnceCell<SqlitePool> = OnceCell::const_new();
+static DB: async_lazy::Lazy<SqlitePool> = async_lazy::Lazy::new(|| {
+    Box::pin(async {
+        // based on https://tms-dev-blog.com/rust-sqlx-basics-with-sqlite/#Creating_an_SQLite_database, accessed 2024-08-20.
+        if !Sqlite::database_exists(DB_URL).await.unwrap() {
+            println!("Creating DB files.");
+            Sqlite::create_database(DB_URL).await.unwrap();
+            let db = SqlitePool::connect(DB_URL).await.unwrap();
+            query(
+                "CREATE TABLE IF NOT EXISTS channels (
+                playlist_id TEXT NOT NULL,
+                channel_id INTEGER NOT NULL,
+                most_recent TEXT NOT NULL CHECK ( DATETIME(most_recent) IS most_recent ),
+                PRIMARY KEY (playlist_id, channel_id)
+            ) STRICT",
+            )
+            .execute(&db)
+            .await
+            .unwrap();
+            db
+        } else {
+            SqlitePool::connect(DB_URL).await.unwrap()
+        }
+    })
+});
 
 static HYPER: LazyLock<hyper::Client<HttpsConnector<HttpConnector>>> = LazyLock::new(|| {
     hyper::Client::builder().build(
@@ -98,7 +121,9 @@ static YOUTUBE: LazyLock<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>> =
         RateLimiter::new_fast(TIME_PER_REQUEST, youtube)
     });
 
-static CATEGORY_TITLES: OnceCell<Mutex<CategoryCache>> = OnceCell::const_new();
+static CATEGORY_TITLES: async_lazy::Lazy<Mutex<CategoryCache>> = async_lazy::Lazy::new(|| {
+    Box::pin(async { Mutex::new(initialize_categories().await.unwrap()) })
+});
 
 // 1 day / 10,000 (which is the rate limit)
 const TIME_PER_REQUEST: Duration = Duration::from_millis(
@@ -165,27 +190,6 @@ pub enum MainError {
 
 #[tokio::main]
 async fn main() -> Result<(), MainError> {
-    // based on https://tms-dev-blog.com/rust-sqlx-basics-with-sqlite/#Creating_an_SQLite_database, accessed 2024-08-20.
-    if !Sqlite::database_exists(DB_URL).await? {
-        println!("Creating DB files.");
-        Sqlite::create_database(DB_URL).await?;
-        let db = SqlitePool::connect(DB_URL).await?;
-        query(
-            "CREATE TABLE IF NOT EXISTS channels (
-                playlist_id TEXT NOT NULL,
-                channel_id INTEGER NOT NULL,
-                most_recent TEXT NOT NULL CHECK ( DATETIME(most_recent) IS most_recent ),
-                PRIMARY KEY (playlist_id, channel_id)
-            ) STRICT",
-        )
-        .execute(&db)
-        .await?;
-        DB.set(db)
-    } else {
-        DB.set(SqlitePool::connect(DB_URL).await?)
-    }
-    .unwrap();
-
     update_db_schema().await?;
 
     let token = CONFIG.get_string("token").expect("Token not found. Either:\n
@@ -197,10 +201,6 @@ async fn main() -> Result<(), MainError> {
             "\tWARNING: No admin users specified in config file!\n\tBy default, any user will be able to shut down your bot."
         );
     }
-
-    CATEGORY_TITLES
-        .set(Mutex::new(initialize_categories().await.unwrap()))
-        .unwrap();
 
     // Build our client.
     let mut client = serenity::Client::builder(token, GatewayIntents::empty())

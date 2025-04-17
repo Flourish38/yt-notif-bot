@@ -1,8 +1,8 @@
+use crate::CATEGORY_TITLES;
 use crate::db::{get_channels_to_send, get_filters, get_playlists, update_most_recent};
 use crate::youtube::{
-    get_uploads_from_playlist, get_videos_extras, LiveStreamDetails, Video, VideoExtras,
+    LiveStreamDetails, Video, VideoExtras, get_uploads_from_playlist, get_videos_extras,
 };
-use crate::CATEGORY_TITLES;
 
 use std::collections::VecDeque;
 
@@ -52,7 +52,7 @@ impl<'a> Workunit<'a> {
             return Ok(None);
         }
 
-        let mut _lock = CATEGORY_TITLES.get().unwrap().lock().await;
+        let mut _lock = CATEGORY_TITLES.force().await.lock().await;
 
         let (category_title, category_emoji) = _lock
             .get(self.extras.category_id.clone())
