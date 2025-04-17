@@ -37,7 +37,7 @@ pub async fn get_upload_playlist_id(
 
     let uri = channel_uri.clone().try_into()?;
 
-    let response = HYPER.get().unwrap().get(uri).await?;
+    let response = HYPER.get(uri).await?;
 
     let b = match response.status() {
         StatusCode::OK => Ok(response.into_body()),
@@ -132,14 +132,12 @@ impl TryFrom<PlaylistItemContentDetails> for Video {
 
 pub async fn get_uploads_from_playlist(playlist_id: &str) -> Result<Vec<Video>, UploadsError> {
     let response = YOUTUBE
-        .get()
-        .unwrap()
         .use_with(async |yt| {
             yt.playlist_items()
                 .list(&vec!["contentDetails".into()])
                 .playlist_id(playlist_id)
                 .max_results(50)
-                .param("key", KEY.get().unwrap())
+                .param("key", &KEY)
                 .doit()
                 .await
         })
@@ -172,7 +170,7 @@ pub enum ShortsError {
 pub async fn is_short(id: &str) -> Result<bool, ShortsError> {
     let uri = format!("https://www.youtube.com/shorts/{}", id).try_into()?;
 
-    let response = HYPER.get().unwrap().get(uri).await?;
+    let response = HYPER.get(uri).await?;
 
     match response.status() {
         StatusCode::SEE_OTHER => Ok(false), // 303
@@ -221,8 +219,6 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
     }
 
     let response = YOUTUBE
-        .get()
-        .unwrap()
         .use_with(async |yt| {
             let mut query = yt.videos().list(&vec![
                 "contentDetails".into(),
@@ -233,9 +229,9 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                 query = query.add_id(video.id.as_str());
             }
             query
-                .hl(LANGUAGE.get().unwrap())
+                .hl(&LANGUAGE)
                 .max_results(50)
-                .param("key", KEY.get().unwrap())
+                .param("key", &KEY)
                 .doit()
                 .await
         })
@@ -324,14 +320,12 @@ pub enum InitializeCategoriesError {
 
 pub async fn initialize_categories() -> Result<CategoryCache, InitializeCategoriesError> {
     let response = YOUTUBE
-        .get()
-        .unwrap()
         .use_with(async |yt| {
             yt.video_categories()
                 .list(&vec!["snippet".into()])
-                .region_code(REGION_CODE.get().unwrap())
-                .hl(LANGUAGE.get().unwrap())
-                .param("key", KEY.get().unwrap())
+                .region_code(&REGION_CODE)
+                .hl(&LANGUAGE)
+                .param("key", &KEY)
                 .doit()
                 .await
         })
@@ -410,14 +404,12 @@ impl CategoryCache {
             let _id = id.clone();
 
             let response = YOUTUBE
-                .get()
-                .unwrap()
                 .use_with(async |yt| {
                     yt.video_categories()
                         .list(&vec!["snippet".into()])
                         .add_id(_id.as_str())
-                        .hl(LANGUAGE.get().unwrap())
-                        .param("key", KEY.get().unwrap())
+                        .hl(&LANGUAGE)
+                        .param("key", &KEY)
                         .doit()
                         .await
                 })

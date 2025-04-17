@@ -1,6 +1,6 @@
 use crate::db::{add_channel, delete_channel, get_num_playlists};
 use crate::generate_components::make_button;
-use crate::youtube::{get_upload_playlist_id, PlaylistIdError};
+use crate::youtube::{PlaylistIdError, get_upload_playlist_id};
 use crate::{ADMIN_USERS, TIME_PER_REQUEST};
 
 use std::time::{Duration, Instant};
@@ -14,7 +14,7 @@ use serenity::model::prelude::ButtonStyle;
 use serenity::prelude::SerenityError;
 
 // needed for shutdown command
-use tokio::sync::{mpsc::Sender, OnceCell};
+use tokio::sync::{OnceCell, mpsc::Sender};
 
 pub static SHUTDOWN_SENDER: OnceCell<Sender<bool>> = OnceCell::const_new();
 
@@ -162,10 +162,7 @@ async fn ping_command(ctx: Context, command: CommandInteraction) -> Result<(), S
 
 async fn shutdown_command(ctx: Context, command: CommandInteraction) -> Result<(), SerenityError> {
     // Set your admin user list in your config file
-    let admins = ADMIN_USERS
-        .get()
-        .expect("Admin list somehow uninitialized??");
-    if !admins.is_empty() && !admins.contains(&command.user.id) {
+    if !ADMIN_USERS.is_empty() && !ADMIN_USERS.contains(&command.user.id) {
         send_simple_response_message(&ctx, &command, "You do not have permission.", true).await?;
         return Ok(());
     }
@@ -204,7 +201,7 @@ async fn get_playlist_id_from_url<'a>(
                 &command,
                 format!("Invalid type for channel url parameter: {:?}", v),
             )
-            .await)
+            .await);
         }
     };
 

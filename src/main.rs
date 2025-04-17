@@ -15,22 +15,23 @@ use components::*;
 
 use db::update_db_schema;
 use google_youtube3::client::NoToken;
-use google_youtube3::{hyper, hyper_rustls, YouTube};
+use google_youtube3::{YouTube, hyper, hyper_rustls};
 
 use hyper::client::HttpConnector;
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 
 use sqlx::migrate::MigrateDatabase;
-use sqlx::{query, Sqlite, SqlitePool};
+use sqlx::{Sqlite, SqlitePool, query};
 use update_loop::update_loop;
-use youtube::{initialize_categories, CategoryCache};
+use youtube::{CategoryCache, initialize_categories};
 
 use std::env;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use thiserror::Error;
 
-use tokio::sync::{mpsc, Mutex, OnceCell};
+use tokio::sync::{Mutex, OnceCell, mpsc};
 
 use serenity::all::{Context, EventHandler, GatewayIntents};
 use serenity::async_trait;
@@ -42,28 +43,60 @@ use config::{Config, ConfigError, File};
 
 use crate::rate_limit::RateLimiter;
 
-// Technically this initial vec is never used but it makes it so you don't need to use an expect() whenever you use the variable.
-// Also, according to the docs, vecs of size 0 don't allocate any memory anyways, so it literally doesn't matter.
+static ADMIN_USERS: LazyLock<Vec<UserId>> = LazyLock::new(|| {
+    CONFIG
+        .get_array("admins")
+        .expect("Error getting admins array from config")
+        .iter()
+        .map(|val| {
+            UserId::new(
+                val.clone()
+                    .into_uint()
+                    .expect("Failed to parse admin list entry into UserId"),
+            )
+        })
+        .collect::<Vec<UserId>>()
+});
 
-static ADMIN_USERS: OnceCell<Vec<UserId>> = OnceCell::const_new();
-
-// Unused by default, but useful in case you need it.
 // If you put `use crate::CONFIG;` in another file, it will include this, and you will have access to the raw config values for your own use.
-static CONFIG: OnceCell<Config> = OnceCell::const_new();
+static CONFIG: LazyLock<Config> = LazyLock::new(|| build_config().unwrap());
 
 const DB_URL: &str = "sqlite://sqlite.db";
 
 static DB: OnceCell<SqlitePool> = OnceCell::const_new();
 
-static HYPER: OnceCell<hyper::Client<HttpsConnector<HttpConnector>>> = OnceCell::const_new();
+static HYPER: LazyLock<hyper::Client<HttpsConnector<HttpConnector>>> = LazyLock::new(|| {
+    hyper::Client::builder().build(
+        HttpsConnectorBuilder::new()
+            .with_native_roots()
+            .unwrap()
+            .https_or_http()
+            .enable_http2()
+            .build(),
+    )
+});
 
-static KEY: OnceCell<Box<str>> = OnceCell::const_new();
+static KEY: LazyLock<Box<str>> = LazyLock::new(|| {
+    CONFIG
+        .get_string("key")
+        .expect(
+            "YouTube Data API key not found. Either:\n
+- put it in the `config` file (key = \"key\")\n
+- set environment variable YOUTUBE_KEY.\n",
+        )
+        .into_boxed_str()
+});
 
-static REGION_CODE: OnceCell<Box<str>> = OnceCell::const_new();
-static LANGUAGE: OnceCell<Box<str>> = OnceCell::const_new();
+static REGION_CODE: LazyLock<Box<str>> =
+    LazyLock::new(|| CONFIG.get_string("region_code").unwrap().into_boxed_str());
+static LANGUAGE: LazyLock<Box<str>> =
+    LazyLock::new(|| CONFIG.get_string("language").unwrap().into_boxed_str());
 
-static YOUTUBE: OnceCell<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>> =
-    OnceCell::const_new();
+static YOUTUBE: LazyLock<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>> =
+    LazyLock::new(|| {
+        let youtube = YouTube::new(HYPER.clone(), NoToken);
+        RateLimiter::new_fast(TIME_PER_REQUEST, youtube)
+    });
 
 static CATEGORY_TITLES: OnceCell<Mutex<CategoryCache>> = OnceCell::const_new();
 
@@ -155,66 +188,14 @@ async fn main() -> Result<(), MainError> {
 
     update_db_schema().await?;
 
-    // Configure the client with your Discord bot token in your `config` file.
-    let config = build_config()?;
-
-    let token = config.get_string("token").expect("Token not found. Either:\n
+    let token = CONFIG.get_string("token").expect("Token not found. Either:\n
                                                                     - put it in the `config` file (token = \"token\")\n
                                                                     - set environment variable DISCORD_TOKEN.\n");
 
-    let admins = config
-        .get_array("admins")?
-        .iter()
-        .map(|val| {
-            UserId::new(
-                val.clone()
-                    .into_uint()
-                    .expect("Failed to parse admin list entry into UserId"),
-            )
-        })
-        .collect::<Vec<UserId>>();
-
-    if admins.is_empty() {
-        println!("\tWARNING: No admin users specified in config file!\n\tBy default, any user will be able to shut down your bot.");
-    }
-
-    ADMIN_USERS.set(admins).unwrap();
-
-    let key = config.get_string("key").expect("YouTube Data API key not found. Either:\n
-                                                                    - put it in the `config` file (key = \"key\")\n
-                                                                    - set environment variable YOUTUBE_KEY.\n");
-
-    KEY.set(key.into_boxed_str()).unwrap();
-
-    LANGUAGE
-        .set(config.get_string("language").unwrap().into_boxed_str())
-        .unwrap();
-    REGION_CODE
-        .set(config.get_string("region_code").unwrap().into_boxed_str())
-        .unwrap();
-
-    CONFIG.set(config).unwrap();
-
-    HYPER
-        .set(
-            hyper::Client::builder().build(
-                HttpsConnectorBuilder::new()
-                    .with_native_roots()
-                    .unwrap()
-                    .https_or_http()
-                    .enable_http2()
-                    .build(),
-            ),
-        )
-        .unwrap();
-
-    let youtube = YouTube::new(HYPER.get().unwrap().clone(), NoToken);
-    let rate_limited_youtube = RateLimiter::new_fast(TIME_PER_REQUEST, youtube);
-
-    // Have to do this instead of .unwrap() because YouTube doesn't implement Debug...
-    match YOUTUBE.set(rate_limited_youtube) {
-        Err(_) => panic!("Somehow a race condition for YOUTUBE???"),
-        _ => (),
+    if ADMIN_USERS.is_empty() {
+        println!(
+            "\tWARNING: No admin users specified in config file!\n\tBy default, any user will be able to shut down your bot."
+        );
     }
 
     CATEGORY_TITLES
