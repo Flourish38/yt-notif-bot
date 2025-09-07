@@ -118,7 +118,7 @@ static LANGUAGE: LazyLock<Box<str>> =
 static YOUTUBE: LazyLock<RateLimiter<YouTube<HttpsConnector<HttpConnector>>>> =
     LazyLock::new(|| {
         let youtube = YouTube::new(HYPER.clone(), NoToken);
-        RateLimiter::new_fast(TIME_PER_REQUEST, youtube)
+        RateLimiter::new(TIME_PER_REQUEST, youtube)
     });
 
 static CATEGORY_TITLES: async_lazy::Lazy<Mutex<CategoryCache>> = async_lazy::Lazy::new(|| {

@@ -8,7 +8,6 @@ pub struct RateLimiter<T> {
 }
 
 impl<T> RateLimiter<T> {
-    #[allow(dead_code)]
     pub fn new(time_per: Duration, resource: T) -> Self {
         Self {
             time_per: time_per,
@@ -16,6 +15,7 @@ impl<T> RateLimiter<T> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn new_fast(time_per: Duration, resource: T) -> Self {
         let now = Instant::now();
         Self {
