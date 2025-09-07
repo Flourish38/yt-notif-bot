@@ -60,8 +60,13 @@ impl<'a> Workunit<'a> {
             .unwrap_or(("NOT_FOUND", None));
 
         let msg_text = format!(
-            "## {} {}{} {} {}\n# [{}](https://youtu.be/{})",
+            "## {} {} {}\n# {}{} [{}](https://youtu.be/{})",
             self.extras.channel_title,
+            match category_emoji {
+                Some(s) => s,
+                None => "",
+            },
+            category_title,
             match self.extras.live_stream_details {
                 LiveStreamDetails::Upcoming => "⏱️ ",
                 LiveStreamDetails::Live => "🔴 ",
@@ -69,11 +74,6 @@ impl<'a> Workunit<'a> {
                 LiveStreamDetails::Uploaded | LiveStreamDetails::NONSENSE => "",
             },
             self.extras.time_string,
-            match category_emoji {
-                Some(s) => s,
-                None => "",
-            },
-            category_title,
             self.extras.video_title,
             self.video.id,
         );

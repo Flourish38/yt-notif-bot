@@ -258,7 +258,32 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
             Some(r) => r,
             None => Err(MissingContent::VideoDuration),
         }
-        .map(|d| format!("`({})`", d));
+        .map(|d| {
+            let s = d.len() - 1;
+            let m = d.find('M');
+            let h = d.find('H');
+            let seconds = d[s - 2..s]
+                .trim_matches(|c| char::is_ascii_alphabetic(&c))
+                .parse()
+                .unwrap_or(0);
+            let minutes = match m {
+                Some(m) => d[m - 2..m]
+                    .trim_matches(|c| char::is_ascii_alphabetic(&c))
+                    .parse()
+                    .unwrap_or(0),
+                None => 0,
+            };
+            match h {
+                Some(h) => {
+                    let hours = d[h - 2..h]
+                        .trim_matches(|c| char::is_ascii_alphabetic(&c))
+                        .parse()
+                        .unwrap_or(0);
+                    format!("`({}:{:02}:{:02})`", hours, minutes, seconds)
+                }
+                None => format!("`({}:{:02})`", minutes, seconds),
+            }
+        });
         // nightmare
         let (live_stream_details, time_string, is_scheduled) =
             if let Some(lsd) = v.live_streaming_details {
