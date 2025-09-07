@@ -284,6 +284,18 @@ async fn unsubscribe_command(
         };
 
     match delete_channel(&playlist_id, command.channel_id).await {
+        Ok(result) if result.rows_affected() == 0 => {
+            edit_deferred_message_simple(
+                &ctx,
+                &command,
+                format!(
+                    "Failed to remove entry to database: channel {} is not subscribed to uploads playlist {}.",
+                    command.channel_id.get(),
+                    playlist_id
+                ),
+            )
+            .await
+        }
         Ok(_) => {
             edit_deferred_message_simple(
                 &ctx,
