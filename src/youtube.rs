@@ -279,9 +279,9 @@ pub async fn get_videos_extras(videos: &[Video]) -> Result<Vec<VideoExtras>, Ext
                         .trim_matches(|c| char::is_ascii_alphabetic(&c))
                         .parse()
                         .unwrap_or(0);
-                    format!("`({}:{:02}:{:02})`", hours, minutes, seconds)
+                    format!("`{}:{:02}:{:02}`", hours, minutes, seconds)
                 }
-                None => format!("`({}:{:02})`", minutes, seconds),
+                None => format!("`{}:{:02}`", minutes, seconds),
             }
         });
         // nightmare

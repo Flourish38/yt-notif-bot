@@ -60,20 +60,20 @@ impl<'a> Workunit<'a> {
             .unwrap_or(("NOT_FOUND", None));
 
         let msg_text = format!(
-            "## {} {} {}\n# {}{} [{}](https://youtu.be/{})",
+            "## {} {} {}\n# {} {}[{}](https://youtu.be/{})",
             self.extras.channel_title,
             match category_emoji {
                 Some(s) => s,
                 None => "",
             },
             category_title,
+            self.extras.time_string,
             match self.extras.live_stream_details {
                 LiveStreamDetails::Upcoming => "⏱️ ",
                 LiveStreamDetails::Live => "🔴 ",
                 LiveStreamDetails::VOD => "⭕ ",
                 LiveStreamDetails::Uploaded | LiveStreamDetails::NONSENSE => "",
             },
-            self.extras.time_string,
             self.extras
                 .video_title
                 .trim_matches(|c: char| !c.is_alphanumeric() && !c.is_ascii_punctuation()),
