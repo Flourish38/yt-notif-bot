@@ -60,7 +60,7 @@ impl<'a> Workunit<'a> {
             .unwrap_or(("NOT_FOUND", None));
 
         let msg_text = format!(
-            "## {} {} {}\n# {}{} [{}](https://youtu.be/{})",
+            "## {} {} {}\n# {}{} {}(https://youtu.be/{})",
             self.extras.channel_title,
             match category_emoji {
                 Some(s) => s,
@@ -74,7 +74,9 @@ impl<'a> Workunit<'a> {
                 LiveStreamDetails::Uploaded | LiveStreamDetails::NONSENSE => "",
             },
             self.extras.time_string,
-            self.extras.video_title,
+            self.extras
+                .video_title
+                .trim_matches(|c: char| !c.is_alphanumeric() && !c.is_ascii_punctuation()),
             self.video.id,
         );
         self.channel_id
