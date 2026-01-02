@@ -26,15 +26,15 @@ use update_loop::update_loop;
 use youtube::{CategoryCache, initialize_categories};
 
 use std::env;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use thiserror::Error;
 
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OnceCell};
 // use tokio::sync::mpsc;
 
-use serenity::all::{Context, EventHandler, GatewayIntents};
+use serenity::all::{Context, EventHandler, GatewayIntents, ShardManager};
 use serenity::async_trait;
 use serenity::model::application::{Command, Interaction};
 use serenity::model::gateway::Ready;
@@ -126,6 +126,8 @@ static CATEGORY_TITLES: async_lazy::Lazy<Mutex<CategoryCache>> = async_lazy::Laz
     Box::pin(async { Mutex::new(initialize_categories().await.unwrap()) })
 });
 
+static SHARD_MANAGER: OnceCell<Arc<ShardManager>> = OnceCell::const_new();
+
 // 1 day / 10,000 (which is the rate limit)
 const TIME_PER_REQUEST: Duration = Duration::from_millis(
     1000 // 1000 milliseconds per second
@@ -208,24 +210,7 @@ async fn main() -> Result<(), MainError> {
         .event_handler(Handler)
         .await?;
 
-    // Channel for the shutdown command to use later
-    // let (sender, mut receiver) = mpsc::channel(64);
-    // SHUTDOWN_SENDER.set(sender).unwrap();
-
-    // let shard_manager = client.shard_manager.clone();
-
-    // // Spawns a task that waits for the shutdown command, then shuts down the bot.
-    // tokio::spawn(async move {
-    //     loop {
-    //         // I have left open the possibility of using b=false for something "softer" in case you need it.
-    //         let b = receiver.recv().await.expect("Shutdown message pass error");
-    //         if b {
-    //             shard_manager.shutdown_all().await;
-    //             println!("Shutdown shard manager");
-    //             break;
-    //         }
-    //     }
-    // });
+    SHARD_MANAGER.set(client.shard_manager.clone()).unwrap();
 
     // Start the client.
 

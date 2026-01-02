@@ -1,7 +1,7 @@
 use crate::db::{add_channel, delete_channel, get_num_playlists};
 use crate::generate_components::make_button;
 use crate::youtube::{PlaylistIdError, get_upload_playlist_id};
-use crate::{ADMIN_USERS, TIME_PER_REQUEST};
+use crate::{ADMIN_USERS, SHARD_MANAGER, TIME_PER_REQUEST};
 
 use std::time::{Duration, Instant};
 
@@ -12,11 +12,6 @@ use serenity::all::{
 };
 use serenity::model::prelude::ButtonStyle;
 use serenity::prelude::SerenityError;
-
-// needed for shutdown command
-// use tokio::sync::{OnceCell, mpsc::Sender};
-
-// pub static SHUTDOWN_SENDER: OnceCell<Sender<bool>> = OnceCell::const_new();
 
 async fn send_simple_response_message<D>(
     ctx: &Context,
@@ -172,20 +167,14 @@ async fn shutdown_command(ctx: Context, command: CommandInteraction) -> Result<(
     );
     // no ? here, we don't want to return early if this fails
     _ = send_simple_response_message(&ctx, &command, "Shutting down...", true).await;
-    // // originally loosely based on https://stackoverflow.com/a/65456463
-    // // This error means that the shutdown channel is somehow not good, so we actually want to panic
-    // let sender = SHUTDOWN_SENDER
-    //     .get()
-    //     .expect("Shutdown command called before shutdown channel initialized??");
-    // // If this errors, the receiver could not receive the message anyways, so we want to panic
-    // sender
-    //     .send(true)
-    //     .await
-    //     .expect("Shutdown message send error");
-    // println!("Passed shutdown message");
-    // // I'm pretty sure this is unnecessary but it makes me happier than not doing it
-    // isn't this all we need?
-    ctx.shard.shutdown_clean();
+
+    // shut down all clients
+    SHARD_MANAGER
+        .get()
+        .expect("Shard manager not set??") // if this fails, we couldn't shut down normally and should panic
+        .shutdown_all()
+        .await;
+
     Ok(())
 }
 
