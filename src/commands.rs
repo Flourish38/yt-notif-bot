@@ -14,9 +14,9 @@ use serenity::model::prelude::ButtonStyle;
 use serenity::prelude::SerenityError;
 
 // needed for shutdown command
-use tokio::sync::{OnceCell, mpsc::Sender};
+// use tokio::sync::{OnceCell, mpsc::Sender};
 
-pub static SHUTDOWN_SENDER: OnceCell<Sender<bool>> = OnceCell::const_new();
+// pub static SHUTDOWN_SENDER: OnceCell<Sender<bool>> = OnceCell::const_new();
 
 async fn send_simple_response_message<D>(
     ctx: &Context,
@@ -172,18 +172,19 @@ async fn shutdown_command(ctx: Context, command: CommandInteraction) -> Result<(
     );
     // no ? here, we don't want to return early if this fails
     _ = send_simple_response_message(&ctx, &command, "Shutting down...", true).await;
-    // originally loosely based on https://stackoverflow.com/a/65456463
-    // This error means that the shutdown channel is somehow not good, so we actually want to panic
-    let sender = SHUTDOWN_SENDER
-        .get()
-        .expect("Shutdown command called before shutdown channel initialized??");
-    // If this errors, the receiver could not receive the message anyways, so we want to panic
-    sender
-        .send(true)
-        .await
-        .expect("Shutdown message send error");
-    println!("Passed shutdown message");
-    // I'm pretty sure this is unnecessary but it makes me happier than not doing it
+    // // originally loosely based on https://stackoverflow.com/a/65456463
+    // // This error means that the shutdown channel is somehow not good, so we actually want to panic
+    // let sender = SHUTDOWN_SENDER
+    //     .get()
+    //     .expect("Shutdown command called before shutdown channel initialized??");
+    // // If this errors, the receiver could not receive the message anyways, so we want to panic
+    // sender
+    //     .send(true)
+    //     .await
+    //     .expect("Shutdown message send error");
+    // println!("Passed shutdown message");
+    // // I'm pretty sure this is unnecessary but it makes me happier than not doing it
+    // isn't this all we need?
     ctx.shard.shutdown_clean();
     Ok(())
 }

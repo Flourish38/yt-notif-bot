@@ -31,7 +31,8 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::Mutex;
+// use tokio::sync::mpsc;
 
 use serenity::all::{Context, EventHandler, GatewayIntents};
 use serenity::async_trait;
@@ -208,23 +209,23 @@ async fn main() -> Result<(), MainError> {
         .await?;
 
     // Channel for the shutdown command to use later
-    let (sender, mut receiver) = mpsc::channel(64);
-    SHUTDOWN_SENDER.set(sender).unwrap();
+    // let (sender, mut receiver) = mpsc::channel(64);
+    // SHUTDOWN_SENDER.set(sender).unwrap();
 
-    let shard_manager = client.shard_manager.clone();
+    // let shard_manager = client.shard_manager.clone();
 
-    // Spawns a task that waits for the shutdown command, then shuts down the bot.
-    tokio::spawn(async move {
-        loop {
-            // I have left open the possibility of using b=false for something "softer" in case you need it.
-            let b = receiver.recv().await.expect("Shutdown message pass error");
-            if b {
-                shard_manager.shutdown_all().await;
-                println!("Shutdown shard manager");
-                break;
-            }
-        }
-    });
+    // // Spawns a task that waits for the shutdown command, then shuts down the bot.
+    // tokio::spawn(async move {
+    //     loop {
+    //         // I have left open the possibility of using b=false for something "softer" in case you need it.
+    //         let b = receiver.recv().await.expect("Shutdown message pass error");
+    //         if b {
+    //             shard_manager.shutdown_all().await;
+    //             println!("Shutdown shard manager");
+    //             break;
+    //         }
+    //     }
+    // });
 
     // Start the client.
 
