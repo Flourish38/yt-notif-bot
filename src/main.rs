@@ -188,7 +188,7 @@ pub enum MainError {
     Serenity(#[from] serenity::Error),
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), MainError> {
     update_db_schema().await?;
 
